@@ -3,7 +3,7 @@ schemaVersion: "1.0"
 source:
   id: "pornhub-webmaster"
   name: "Pornhub Webmasters API"
-  version: "1.2.0"
+  version: "1.3.0"
   description: "Level 2/3 official Pornhub Webmasters JSON API catalog with embed HLS stream extraction."
   author: "Harbor Reference"
   language: "en"
@@ -126,6 +126,12 @@ operations:
             required: true
           thumbnailUrl:
             pointer: "/default_thumb"
+            transforms:
+              - op: "resolveUrl"
+            required: false
+          thumbnailReferences:
+            pointer: "/thumbs"
+            cardinality: "many"
             transforms:
               - op: "resolveUrl"
             required: false

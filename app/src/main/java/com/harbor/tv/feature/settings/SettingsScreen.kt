@@ -53,6 +53,8 @@ fun SettingsScreen(
     isPrivateSession: Boolean,
     offlineFixtureMode: Boolean,
     videoPreloadEnabled: Boolean = true,
+    autoPlayNextEnabled: Boolean = true,
+    focusPreviewEnabled: Boolean = true,
     mediaCacheLimitMb: Int = 1536,
     mediaCacheUsedBytes: Long = 0L,
     mediaCacheMaxBytes: Long = 1536L * 1024L * 1024L,
@@ -66,6 +68,8 @@ fun SettingsScreen(
     onToggleHistoryEnabled: (Boolean) -> Unit,
     onToggleOfflineFixtureMode: (Boolean) -> Unit,
     onToggleVideoPreload: (Boolean) -> Unit = {},
+    onToggleAutoPlayNext: (Boolean) -> Unit = {},
+    onToggleFocusPreview: (Boolean) -> Unit = {},
     onSetMediaCacheLimitMb: (Int) -> Unit = {},
     onSetProfilePin: (String?) -> Unit,
     onClearCacheAndHistory: () -> Unit,
@@ -181,6 +185,14 @@ fun SettingsScreen(
                             )
                         }
                     }
+                    SettingsToggleRow(
+                        title = "Auto-Play Next Video",
+                        subtitle = "Automatically plays the next video in queue after a 5-second countdown.",
+                        valueLabel = if (autoPlayNextEnabled) "ON" else "OFF",
+                        isEnabled = autoPlayNextEnabled,
+                        accent = HarborColors.Gold4K,
+                        onClick = { onToggleAutoPlayNext(!autoPlayNextEnabled) }
+                    )
                 }
             }
 
@@ -227,6 +239,15 @@ fun SettingsScreen(
                         isEnabled = videoPreloadEnabled,
                         accent = HarborColors.AccentTeal,
                         onClick = { onToggleVideoPreload(!videoPreloadEnabled) }
+                    )
+
+                    SettingsToggleRow(
+                        title = "Thumbnail Storyboard Preview",
+                        subtitle = "Cycles low-memory storyboard thumbnails when a video card stays focused.",
+                        valueLabel = if (focusPreviewEnabled) "ON" else "OFF",
+                        isEnabled = focusPreviewEnabled,
+                        accent = HarborColors.AccentTeal,
+                        onClick = { onToggleFocusPreview(!focusPreviewEnabled) }
                     )
 
                     Row(

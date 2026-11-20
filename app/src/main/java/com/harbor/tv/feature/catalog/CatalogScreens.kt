@@ -78,6 +78,7 @@ fun HomeScreen(
     rowsBySource: Map<String, List<CatalogItem>>,
     featuredHomeItem: CatalogItem? = null,
     only4kFilter: Boolean = false,
+    previewEnabled: Boolean = true,
     watchHistory: List<CatalogRepository.WatchHistoryRecord>,
     isLoading: Boolean,
     errorMessage: String?,
@@ -129,6 +130,13 @@ fun HomeScreen(
                         style = MaterialTheme.typography.headlineMedium,
                         color = HarborColors.TextPrimary
                     )
+                    if (activeProfile.name.isNotBlank()) {
+                        Text(
+                            text = activeProfile.name,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = HarborColors.TextMuted
+                        )
+                    }
                     if (isPrivateSession) {
                         Box(
                             modifier = Modifier
@@ -315,6 +323,7 @@ fun HomeScreen(
                                     onFeaturedItemFocused(item)
                                 },
                                 showSourceBadge = true,
+                                previewEnabled = previewEnabled,
                                 onClick = { onOpenVideo(item) }
                             )
                         }
@@ -350,6 +359,7 @@ fun HomeScreen(
                                     },
                                     showSourceBadge = true,
                                     progressFraction = progress,
+                                    previewEnabled = previewEnabled,
                                     onClick = { onOpenVideo(record.item) }
                                 )
                                 Text(
@@ -383,6 +393,7 @@ fun HomeScreen(
                                     onFeaturedItemFocused(item)
                                 },
                                 showSourceBadge = false,
+                                previewEnabled = previewEnabled,
                                 onClick = { onOpenVideo(item) }
                             )
                         }
@@ -640,6 +651,7 @@ fun CategoriesScreen(
     items: List<CatalogItem>,
     only4kFilter: Boolean = false,
     sortMode: CatalogSortMode = CatalogSortMode.DEFAULT,
+    previewEnabled: Boolean = true,
     nextCursor: String?,
     pagesLoaded: Int,
     isLoading: Boolean,
@@ -803,6 +815,7 @@ fun CategoriesScreen(
                     focusRequester = requesterFor(key),
                     onFocused = { onFocusKeyChanged(key) },
                     showSourceBadge = false,
+                    previewEnabled = previewEnabled,
                     onClick = { onOpenVideo(item) }
                 )
             }
@@ -833,6 +846,7 @@ fun CategoriesScreen(
 @Composable
 fun FavoritesScreen(
     favorites: List<CatalogItem>,
+    previewEnabled: Boolean = true,
     lastFocusedKey: String?,
     onFocusKeyChanged: (String) -> Unit,
     onOpenVideo: (CatalogItem) -> Unit,
@@ -888,6 +902,7 @@ fun FavoritesScreen(
                             item = item,
                             focusRequester = requesterFor(key),
                             onFocused = { onFocusKeyChanged(key) },
+                            previewEnabled = previewEnabled,
                             onClick = { onOpenVideo(item) }
                         )
                         TvActionButton(

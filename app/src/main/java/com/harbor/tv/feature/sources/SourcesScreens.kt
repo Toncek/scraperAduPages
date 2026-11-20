@@ -8,15 +8,25 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -32,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.harbor.tv.ApprovalReviewState
 import com.harbor.tv.BundledDefinitionSummary
@@ -44,6 +56,7 @@ import com.harbor.tv.core.tvui.TvButtonTone
 import com.harbor.tv.core.tvui.TvFocusableCard
 import com.harbor.tv.core.tvui.TvStatusBanner
 import com.harbor.tv.core.tvui.TvTagChip
+import com.harbor.tv.core.tvui.friendlySourceName
 import com.harbor.tv.domain.sources.MagicPhSettingsAdapter
 import com.harbor.tv.domain.sources.SourceRegistry
 import com.harbor.tv.engine.definition.ValidationSeverity
@@ -51,6 +64,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SourcesScreen(
     registeredSources: List<SourceRegistry.RegisteredSource>,
@@ -83,8 +97,8 @@ fun SourcesScreen(
         modifier = modifier
             .fillMaxSize()
             .background(HarborColors.Background)
-            .padding(horizontal = 28.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+            .padding(horizontal = 32.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         item {
             Row(
@@ -92,19 +106,43 @@ fun SourcesScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "Sources & Declarative Registry",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = HarborColors.TextPrimary
-                    )
-                    Text(
-                        text = "Manage validated JSON/YAML source definitions, approvals, rollbacks, and offline fixture diagnostics.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = HarborColors.TextSecondary
-                    )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(HarborColors.FocusCyan.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Star,
+                            contentDescription = null,
+                            tint = HarborColors.FocusCyan,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Sources & Site Registry",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = HarborColors.TextPrimary
+                        )
+                        Text(
+                            text = "Manage validated JSON/YAML source definitions, approvals, rollbacks, and offline fixture diagnostics.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = HarborColors.TextSecondary
+                        )
+                    }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Spacer(modifier = Modifier.width(16.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     TvActionButton(
                         label = "Enable All Bundled",
                         tone = TvButtonTone.ACCENT,
@@ -141,7 +179,7 @@ fun SourcesScreen(
         // Registered Sources
         item {
             Text(
-                text = "Registered Definitions (${registeredSources.size})",
+                text = "Registered Sources (${registeredSources.size})",
                 style = MaterialTheme.typography.titleLarge,
                 color = HarborColors.TextPrimary
             )
@@ -166,38 +204,64 @@ fun SourcesScreen(
                     DefinitionLifecycleState.INCOMPATIBLE -> HarborColors.DangerRed
                     else -> HarborColors.TextSecondary
                 }
+                val stateIcon = when (state) {
+                    DefinitionLifecycleState.ENABLED -> Icons.Rounded.CheckCircle
+                    DefinitionLifecycleState.AWAITING_APPROVAL,
+                    DefinitionLifecycleState.PENDING_UPDATE,
+                    DefinitionLifecycleState.BROKEN,
+                    DefinitionLifecycleState.INCOMPATIBLE -> Icons.Rounded.Warning
+                    else -> Icons.Rounded.Info
+                }
                 val def = src.definition
                 val key = "reg:${src.record.sourceId}"
+                val displayName = def?.source?.name ?: friendlySourceName(src.record.sourceId)
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(HarborColors.SurfaceCard)
-                        .border(1.dp, stateColor.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .border(1.dp, stateColor.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                             Text(
-                                text = "${def?.source?.name ?: src.record.sourceId} (${src.record.sourceId})",
+                                text = displayName,
                                 style = MaterialTheme.typography.titleLarge,
-                                color = HarborColors.TextPrimary
+                                color = HarborColors.TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "Version ${src.record.version} • State: ${state.name}" +
-                                    (src.record.previousVersion?.let { " • Rollback available: v$it" } ?: ""),
+                                text = "${friendlySourceName(src.record.sourceId)} (${src.record.sourceId}) • v${src.record.version}" +
+                                    (src.record.previousVersion?.let { " • Rollback: v$it" } ?: ""),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = stateColor
+                                color = HarborColors.TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        StatusPillBadge(
+                            label = state.name.replace('_', ' '),
+                            icon = stateIcon,
+                            color = stateColor
+                        )
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                         if (state == DefinitionLifecycleState.AWAITING_APPROVAL ||
                             state == DefinitionLifecycleState.PENDING_UPDATE
                         ) {
@@ -248,28 +312,43 @@ fun SourcesScreen(
         // Bundled YAML Definitions
         item {
             Text(
-                text = "Bundled YAML Definitions (Tap to Validate & Review Approval)",
+                text = "Bundled Site Definitions (Press OK to Validate & Review)",
                 style = MaterialTheme.typography.titleLarge,
                 color = HarborColors.TextPrimary
             )
         }
         item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(bundledDefinitions, key = { it.assetPath }) { bundled ->
                     TvFocusableCard(
                         onClick = { onLoadBundledDefinition(bundled.assetPath) },
-                        modifier = Modifier.width(240.dp)
+                        modifier = Modifier.width(260.dp)
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = bundled.title,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = HarborColors.FocusCyan
-                            )
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Add,
+                                    contentDescription = null,
+                                    tint = HarborColors.FocusCyan,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = bundled.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = HarborColors.FocusCyan,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                             Text(
                                 text = bundled.fileName,
                                 style = MaterialTheme.typography.labelMedium,
-                                color = HarborColors.TextSecondary
+                                color = HarborColors.TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -295,14 +374,15 @@ fun SourcesScreen(
 
         items(magicPhProfiles, key = { "mph_${it.id}" }) { profile ->
             val key = "mph:${profile.id}"
+            val friendlyName = friendlySourceName(profile.id)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(HarborColors.Surface)
-                    .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(12.dp))
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(14.dp))
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -311,33 +391,26 @@ fun SourcesScreen(
                 ) {
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = "${profile.name} (${profile.id})" +
+                            text = "${profile.name} ($friendlyName • ${profile.id})" +
                                 (profile.operator?.let { " — $it" } ?: ""),
                             style = MaterialTheme.typography.titleMedium,
                             color = HarborColors.TextPrimary
                         )
                         Text(
-                            text = "Status: ${profile.sourceStatus} • Desktop: ${profile.desktopSupported} • Mobile: ${profile.mobileSupported} • Search: ${profile.searchSupported} • Direct Video: ${profile.directVideoSupported}",
+                            text = "Desktop: ${yesNo(profile.desktopSupported)} • Mobile: ${yesNo(profile.mobileSupported)} • Search: ${yesNo(profile.searchSupported)} • Direct Video: ${yesNo(profile.directVideoSupported)}",
                             style = MaterialTheme.typography.labelMedium,
-                            color = HarborColors.WarningAmber
+                            color = HarborColors.TextSecondary
                         )
                     }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(HarborColors.WarningAmber.copy(alpha = 0.16f))
-                            .border(1.dp, HarborColors.WarningAmber, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = profile.sourceStatus,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = HarborColors.WarningAmber
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    StatusPillBadge(
+                        label = profile.sourceStatus,
+                        icon = Icons.Rounded.Info,
+                        color = HarborColors.WarningAmber
+                    )
                 }
 
                 profile.officialApiType?.let { api ->
@@ -368,13 +441,18 @@ fun SourcesScreen(
 
                 val assetPath = profile.bundledDefinitionAsset
                 if (assetPath != null) {
-                    TvActionButton(
-                        label = "Load Bundled Definition",
-                        tone = TvButtonTone.PRIMARY,
-                        focusRequester = requesterFor(key),
-                        onFocused = { onFocusKeyChanged(key) },
-                        onClick = { onLoadBundledDefinition(assetPath) }
-                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TvActionButton(
+                            label = "Load Bundled Definition",
+                            tone = TvButtonTone.PRIMARY,
+                            focusRequester = requesterFor(key),
+                            onFocused = { onFocusKeyChanged(key) },
+                            onClick = { onLoadBundledDefinition(assetPath) }
+                        )
+                    }
                 }
             }
         }
@@ -411,8 +489,8 @@ fun DefinitionImportScreen(
         modifier = modifier
             .fillMaxSize()
             .background(HarborColors.Background)
-            .padding(horizontal = 28.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+            .padding(horizontal = 32.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         item {
             Row(
@@ -420,22 +498,43 @@ fun DefinitionImportScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = if (approvalReview != null) {
-                            "Source Approval Review"
-                        } else {
-                            "Definition Import"
-                        },
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = HarborColors.TextPrimary
-                    )
-                    Text(
-                        text = "Definitions are validated offline before approval. No network requests occur during import parsing.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = HarborColors.TextSecondary
-                    )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(HarborColors.FocusCyan.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (approvalReview != null) Icons.Rounded.CheckCircle else Icons.Rounded.Add,
+                            contentDescription = null,
+                            tint = HarborColors.FocusCyan,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = if (approvalReview != null) {
+                                "Source Approval Review"
+                            } else {
+                                "Definition Import"
+                            },
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = HarborColors.TextPrimary
+                        )
+                        Text(
+                            text = "Definitions are validated offline before approval. No network requests occur during import parsing.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = HarborColors.TextSecondary
+                        )
+                    }
                 }
+                Spacer(modifier = Modifier.width(16.dp))
                 TvActionButton(label = "Back", onClick = onBack)
             }
         }
@@ -484,20 +583,34 @@ fun DefinitionImportScreen(
                         .padding(22.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Text(
-                        text = "${approvalReview.sourceName} (${approvalReview.sourceId} v${approvalReview.version})",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = HarborColors.TextPrimary
-                    )
-                    Text(
-                        text = buildString {
-                            append("Author: ${approvalReview.author ?: "Not specified"}")
-                            append(" • Lifecycle: ${approvalReview.lifecycleState.name}")
-                            append(" • Validation: ${if (approvalReview.isValid) "PASSED" else "FAILED"}")
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (approvalReview.isValid) HarborColors.SuccessGreen else HarborColors.DangerRed
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "${approvalReview.sourceName} (${friendlySourceName(approvalReview.sourceId)})",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = HarborColors.TextPrimary
+                            )
+                            Text(
+                                text = "${approvalReview.sourceId} • v${approvalReview.version} • Author: ${approvalReview.author ?: "Not specified"} • Lifecycle: ${approvalReview.lifecycleState.name}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = HarborColors.TextSecondary
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        StatusPillBadge(
+                            label = if (approvalReview.isValid) "PASSED" else "FAILED",
+                            icon = if (approvalReview.isValid) Icons.Rounded.CheckCircle else Icons.Rounded.Warning,
+                            color = if (approvalReview.isValid) HarborColors.SuccessGreen else HarborColors.DangerRed
+                        )
+                    }
+
                     approvalReview.description?.let {
                         Text(text = it, style = MaterialTheme.typography.bodyLarge, color = HarborColors.TextSecondary)
                     }
@@ -529,18 +642,29 @@ fun DefinitionImportScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(HarborColors.WarningAmber.copy(alpha = 0.12f))
-                            .border(1.dp, HarborColors.WarningAmber.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                            .border(1.dp, HarborColors.WarningAmber.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
                             .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(
-                            text = "Permission Declaration: basis=${approvalReview.permissionBasis ?: "none"}" +
-                                (approvalReview.permissionReference?.let { " • ref=$it" } ?: ""),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = HarborColors.WarningAmber
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Warning,
+                                contentDescription = null,
+                                tint = HarborColors.WarningAmber,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "Permission Declaration: basis=${approvalReview.permissionBasis ?: "none"}" +
+                                    (approvalReview.permissionReference?.let { " • ref=$it" } ?: ""),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = HarborColors.WarningAmber
+                            )
+                        }
                         approvalReview.permissionNotes?.let {
                             Text(text = it, style = MaterialTheme.typography.bodyMedium, color = HarborColors.TextPrimary)
                         }
@@ -569,7 +693,7 @@ fun DefinitionImportScreen(
                     }
 
                     if (approvalReview.validationIssues.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
                                 text = "Validation Findings (${approvalReview.validationIssues.size})",
                                 style = MaterialTheme.typography.titleMedium,
@@ -590,7 +714,10 @@ fun DefinitionImportScreen(
                         }
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                         TvActionButton(
                             label = if (approvalReview.isPendingUpdate) {
                                 "Approve Update & Activate"
@@ -637,9 +764,9 @@ fun DefinitionImportScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(HarborColors.SurfaceCard)
-                        .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(14.dp))
+                        .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(16.dp))
                         .padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -672,9 +799,9 @@ fun DefinitionImportScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(HarborColors.SurfaceCard)
-                        .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(14.dp))
+                        .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(16.dp))
                         .padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -724,6 +851,7 @@ private fun HostGroupRow(label: String, hosts: List<String>) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DiagnosticsScreen(
     sourceName: String?,
@@ -742,8 +870,8 @@ fun DiagnosticsScreen(
         modifier = modifier
             .fillMaxSize()
             .background(HarborColors.Background)
-            .padding(horizontal = 28.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 32.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item {
             Row(
@@ -751,19 +879,43 @@ fun DiagnosticsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "Definition Diagnostics${sourceName?.let { ": $it" } ?: ""}",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = HarborColors.TextPrimary
-                    )
-                    Text(
-                        text = "Offline FixtureRunner results with real network disabled and sensitive tokens redacted.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = HarborColors.TextSecondary
-                    )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(HarborColors.AccentTeal.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Build,
+                            contentDescription = null,
+                            tint = HarborColors.AccentTeal,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Definition Diagnostics${sourceName?.let { ": ${friendlySourceName(it)}" } ?: ""}",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = HarborColors.TextPrimary
+                        )
+                        Text(
+                            text = "Offline FixtureRunner results with real network disabled and sensitive tokens redacted.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = HarborColors.TextSecondary
+                        )
+                    }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Spacer(modifier = Modifier.width(16.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     TvActionButton(
                         label = "Re-run Offline Fixtures",
                         tone = TvButtonTone.PRIMARY,
@@ -800,13 +952,13 @@ fun DiagnosticsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(HarborColors.SurfaceCard)
-                        .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(14.dp))
+                        .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(16.dp))
                         .padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    DiagLine("Source ID", report.sourceId)
+                    DiagLine("Source", "${friendlySourceName(report.sourceId)} (${report.sourceId})")
                     DiagLine("Active Version", report.activeVersion)
                     DiagLine("Last Successful Request", formatEpochMs(report.lastSuccessfulRequestMs))
                     DiagLine("Last Successful Parse", formatEpochMs(report.lastSuccessfulParseMs))
@@ -835,9 +987,9 @@ fun DiagnosticsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(HarborColors.Surface)
-                        .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(14.dp))
+                        .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(16.dp))
                         .padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -862,20 +1014,34 @@ fun DiagnosticsScreen(
 
             items(report.fixtureResults, key = { it.fixtureId }) { res ->
                 val color = if (res.passed) HarborColors.SuccessGreen else HarborColors.DangerRed
+                val icon = if (res.passed) Icons.Rounded.CheckCircle else Icons.Rounded.Warning
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .background(color.copy(alpha = 0.10f))
-                        .border(1.dp, color.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                        .border(1.dp, color.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = "${res.fixtureId} [${res.operation}] — ${if (res.passed) "PASSED" else "FAILED"}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = color
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${res.fixtureId} [${res.operation}]",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = color,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        StatusPillBadge(
+                            label = if (res.passed) "PASSED" else "FAILED",
+                            icon = icon,
+                            color = color
+                        )
+                    }
                     Text(
                         text = "Extracted: ${res.itemsExtracted} • Rejected: ${res.itemsRejected} • Candidates: ${res.candidatesExtracted}" +
                             (res.errorCode?.let { " • Error: ${it.name}" } ?: ""),
@@ -894,23 +1060,58 @@ fun DiagnosticsScreen(
 }
 
 @Composable
+private fun StatusPillBadge(
+    label: String,
+    icon: ImageVector,
+    color: Color
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(color.copy(alpha = 0.16f))
+            .border(1.dp, color.copy(alpha = 0.65f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(15.dp)
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = color
+        )
+    }
+}
+
+@Composable
 private fun DiagLine(label: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = HarborColors.TextSecondary
+            color = HarborColors.TextSecondary,
+            modifier = Modifier.width(200.dp)
         )
+        Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            color = HarborColors.TextPrimary
+            color = HarborColors.TextPrimary,
+            modifier = Modifier.weight(1f)
         )
     }
 }
+
+private fun yesNo(value: Boolean): String = if (value) "Yes" else "No"
 
 private fun formatEpochMs(ms: Long?): String {
     if (ms == null) return "Never"

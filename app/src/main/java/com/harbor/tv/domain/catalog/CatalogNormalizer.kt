@@ -112,7 +112,11 @@ class CatalogNormalizer(
         val explicitMaxResolutionHeight = extractInt(
             rawFields["maxResolutionHeight"] ?: rawFields["resolutionHeight"]
         )
-        val rawThumbnails = extractStringList(rawFields["thumbnailUrl"] ?: rawFields["thumbnailReferences"])
+        val rawThumbnails = (
+            extractStringList(rawFields["thumbnailUrl"]) +
+                extractStringList(rawFields["thumbnailReferences"]) +
+                extractStringList(rawFields["previewThumbnails"])
+            ).distinct()
 
         return buildNormalizedCatalogItem(
             sourceId = sourceId,
@@ -369,7 +373,9 @@ class CatalogNormalizer(
             title = title
         )
 
-        val validThumbnails = filterValidThumbnails(rawThumbnails, definition, userAllowLan)
+        val validThumbnails = sampleThumbnails(
+            filterValidThumbnails(rawThumbnails, definition, userAllowLan)
+        )
         val completeness = computeMetadataCompleteness(
             sourceItemId = sourceItemId,
             title = title,
@@ -493,6 +499,15 @@ class CatalogNormalizer(
             }
             else -> LiveStatus.ON_DEMAND
         }
+    }
+
+    private fun sampleThumbnails(urls: List<String>, maxCount: Int = 6): List<String> {
+        if (urls.size <= maxCount) return urls
+        if (maxCount <= 1) return urls.take(maxCount)
+        return (0 until maxCount).map { i ->
+            val idx = (i * (urls.size - 1)) / (maxCount - 1)
+            urls[idx]
+        }.distinct()
     }
 
     private fun normalizeFallbackSlug(rawTag: String): String {

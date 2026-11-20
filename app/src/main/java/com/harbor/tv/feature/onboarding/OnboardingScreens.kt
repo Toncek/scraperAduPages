@@ -11,13 +11,24 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -32,6 +43,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.harbor.tv.core.model.PreferenceConfig
 import com.harbor.tv.core.model.QualityPreference
@@ -45,6 +58,7 @@ import com.harbor.tv.core.tvui.TvFocusableCard
 import com.harbor.tv.core.tvui.TvStatusBanner
 import com.harbor.tv.core.tvui.TvTagChip
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WelcomeScreen(
     onContinueToProfiles: () -> Unit,
@@ -60,49 +74,78 @@ fun WelcomeScreen(
         modifier = modifier
             .fillMaxSize()
             .background(HarborColors.Background)
-            .padding(horizontal = 48.dp, vertical = 36.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+            .padding(horizontal = 48.dp, vertical = 40.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Welcome to Harbor",
-                    style = MaterialTheme.typography.displaySmall,
-                    color = HarborColors.TextPrimary
-                )
-                Text(
-                    text = "A declarative Android TV video browser built for remote navigation and local-first control.",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = HarborColors.TextSecondary
-                )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(HarborColors.FocusCyan.copy(alpha = 0.16f))
+                        .border(1.dp, HarborColors.FocusCyan.copy(alpha = 0.55f), RoundedCornerShape(16.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        tint = HarborColors.FocusCyan,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Welcome to Harbor",
+                        style = MaterialTheme.typography.displaySmall,
+                        color = HarborColors.TextPrimary
+                    )
+                    Text(
+                        text = "Your living-room TV browser for curated sources, smooth 4K playback, and complete local control.",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = HarborColors.TextSecondary
+                    )
+                }
             }
         }
 
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(18.dp)
+                horizontalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 WelcomePrincipleCard(
-                    title = "Declarative Definitions",
-                    body = "Sources are added using schema-validated JSON or YAML files—never executable plugins or arbitrary website JavaScript. Every host must be explicitly approved by you.",
+                    icon = Icons.Rounded.Star,
+                    accentColor = HarborColors.FocusCyan,
+                    title = "Declarative Sources",
+                    body = "Add supported sites using schema-checked JSON or YAML files—never executable plugins or arbitrary JavaScript. Every domain requires your approval.",
                     modifier = Modifier.weight(1f)
                 )
                 WelcomePrincipleCard(
+                    icon = Icons.Rounded.Lock,
+                    accentColor = HarborColors.PrivatePurple,
                     title = "Local-Only Privacy",
-                    body = "No cloud accounts, no analytics, no autoplay previews, no casting, and no launcher recommendations. Preferences, favorites, and optional history stay on this device.",
+                    body = "No cloud accounts, no analytics, no autoplay previews, no casting, and no launcher recommendations. Preferences, favorites, and optional history stay on this TV.",
                     modifier = Modifier.weight(1f)
                 )
                 WelcomePrincipleCard(
-                    title = "Neutral Branding",
-                    body = "Harbor uses neutral TV launcher branding for general-purpose catalog browsing. Neutral branding is cosmetic only and does not make the app invisible on the device.",
+                    icon = Icons.Rounded.Home,
+                    accentColor = HarborColors.AccentTeal,
+                    title = "Living-Room Ready",
+                    body = "Built from the ground up for D-pad remote control with neutral TV launcher branding. Neutral branding is cosmetic only and does not hide the app on your device.",
                     modifier = Modifier.weight(1f)
                 )
             }
         }
 
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 TvActionButton(
                     label = "Choose Profile & Preferences",
                     tone = TvButtonTone.PRIMARY,
@@ -121,23 +164,44 @@ fun WelcomeScreen(
 
 @Composable
 private fun WelcomePrincipleCard(
+    icon: ImageVector,
+    accentColor: Color,
     title: String,
     body: String,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(HarborColors.SurfaceCard)
-            .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(14.dp))
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(16.dp))
+            .padding(22.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            color = HarborColors.FocusCyan
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(accentColor.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                color = accentColor
+            )
+        }
         Text(
             text = body,
             style = MaterialTheme.typography.bodyLarge,
@@ -146,6 +210,7 @@ private fun WelcomePrincipleCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProfileSelectionScreen(
     profiles: List<UserProfile>,
@@ -183,11 +248,11 @@ fun ProfileSelectionScreen(
         modifier = modifier
             .fillMaxSize()
             .background(HarborColors.Background)
-            .padding(horizontal = 42.dp, vertical = 28.dp)
+            .padding(horizontal = 42.dp, vertical = 30.dp)
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             item {
                 Row(
@@ -195,19 +260,43 @@ fun ProfileSelectionScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "Profile Selection",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = HarborColors.TextPrimary
-                        )
-                        Text(
-                            text = "Switching profiles clears previously visible catalog results and enforces the selected profile's filters.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = HarborColors.TextSecondary
-                        )
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(46.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(HarborColors.FocusCyan.copy(alpha = 0.14f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Person,
+                                contentDescription = null,
+                                tint = HarborColors.FocusCyan,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "Who's Watching?",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = HarborColors.TextPrimary
+                            )
+                            Text(
+                                text = "Switching profiles clears visible catalog results right away and applies your own filters and quality target.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = HarborColors.TextSecondary
+                            )
+                        }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Spacer(modifier = Modifier.width(16.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         TvActionButton(
                             label = if (showCreateForm) "Hide New Profile" else "+ New Profile",
                             onClick = { showCreateForm = !showCreateForm }
@@ -251,27 +340,57 @@ fun ProfileSelectionScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(
+                        Row(
                             modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            Text(
-                                text = "Private Session: ${if (isPrivateSession) "ON" else "OFF"}",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = if (isPrivateSession) HarborColors.PrivatePurple else HarborColors.TextPrimary
-                            )
-                            Text(
-                                text = "Avoids persisting search history, watch history, resume positions, and disk media cache. Does not hide traffic from network operators, source providers, or device administrators.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = HarborColors.TextSecondary
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        (if (isPrivateSession) HarborColors.PrivatePurple else HarborColors.TextSecondary)
+                                            .copy(alpha = 0.16f)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Lock,
+                                    contentDescription = null,
+                                    tint = if (isPrivateSession) HarborColors.PrivatePurple else HarborColors.TextSecondary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = "Private Session: ${if (isPrivateSession) "ON" else "OFF"}",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = if (isPrivateSession) HarborColors.PrivatePurple else HarborColors.TextPrimary
+                                )
+                                Text(
+                                    text = "Avoids saving search history, watch history, resume positions, and disk video cache. Does not hide traffic from your network operator, source providers, or device administrators.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = HarborColors.TextSecondary
+                                )
+                            }
                         }
                         Spacer(modifier = Modifier.width(16.dp))
-                        Text(
-                            text = if (isPrivateSession) "ACTIVE" else "ENABLE",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (isPrivateSession) HarborColors.PrivatePurple else HarborColors.FocusCyan
-                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    (if (isPrivateSession) HarborColors.PrivatePurple else HarborColors.FocusCyan)
+                                        .copy(alpha = 0.16f)
+                                )
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = if (isPrivateSession) "ACTIVE" else "ENABLE",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (isPrivateSession) HarborColors.PrivatePurple else HarborColors.FocusCyan
+                            )
+                        }
                     }
                 }
             }
@@ -281,20 +400,31 @@ fun ProfileSelectionScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(HarborColors.Surface)
-                            .border(1.dp, HarborColors.FocusCyan.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .border(1.dp, HarborColors.FocusCyan.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Text(
-                            text = "Create Local Profile",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = HarborColors.TextPrimary
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Add,
+                                contentDescription = null,
+                                tint = HarborColors.FocusCyan,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Text(
+                                text = "Create Local Profile",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = HarborColors.TextPrimary
+                            )
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
                             OutlinedTextField(
                                 value = newProfileName,
@@ -312,7 +442,7 @@ fun ProfileSelectionScreen(
                             OutlinedTextField(
                                 value = newProfilePin,
                                 onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) newProfilePin = it },
-                                label = { Text("Optional PIN (digits)") },
+                                label = { Text("Optional PIN (up to 6 digits)") },
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedTextColor = HarborColors.TextPrimary,
@@ -323,7 +453,10 @@ fun ProfileSelectionScreen(
                                 modifier = Modifier.weight(1f)
                             )
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
                             listOf("Guest", "Family", "Night").forEach { preset ->
                                 TvTagChip(
                                     label = "Preset: $preset",
@@ -354,7 +487,7 @@ fun ProfileSelectionScreen(
             }
 
             item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     items(profiles.indices.toList()) { idx ->
                         val profile = profiles[idx]
                         val isActive = profile.id == activeProfileId
@@ -368,30 +501,64 @@ fun ProfileSelectionScreen(
                                     onSelectProfile(profile, null)
                                 }
                             },
-                            modifier = Modifier.width(280.dp),
+                            modifier = Modifier.width(300.dp),
                             focusRequester = if (idx == 0) firstCardFocus else null,
                             unfocusedBorderColor = if (isActive) HarborColors.FocusCyan else HarborColors.BorderSubtle
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = profile.name,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        color = if (isActive) HarborColors.FocusCyan else HarborColors.TextPrimary
-                                    )
-                                    if (isActive) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(
+                                                    (if (isActive) HarborColors.FocusCyan else HarborColors.SurfaceElevated)
+                                                        .copy(alpha = if (isActive) 0.2f else 1f)
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = if (profile.pinHash != null) Icons.Rounded.Lock else Icons.Rounded.Person,
+                                                contentDescription = null,
+                                                tint = if (isActive) HarborColors.FocusCyan else HarborColors.TextSecondary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
                                         Text(
-                                            text = "ACTIVE",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = HarborColors.SuccessGreen
+                                            text = profile.name,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            color = if (isActive) HarborColors.FocusCyan else HarborColors.TextPrimary
                                         )
+                                    }
+                                    if (isActive) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.CheckCircle,
+                                                contentDescription = null,
+                                                tint = HarborColors.SuccessGreen,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = "ACTIVE",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = HarborColors.SuccessGreen
+                                            )
+                                        }
                                     }
                                 }
                                 Text(
-                                    text = "Metadata: ${profile.unknownMetadataMode.name} • Quality: ${profile.qualityPreference.name}",
+                                    text = "${profile.unknownMetadataMode.name} filter • ${profile.qualityPreference.name.replace('_', ' ')}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = HarborColors.TextSecondary
                                 )
@@ -430,6 +597,12 @@ fun ProfileSelectionScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Lock,
+                        contentDescription = null,
+                        tint = HarborColors.FocusCyan,
+                        modifier = Modifier.size(28.dp)
+                    )
                     Text(
                         text = "Enter PIN for ${targetPinProfile.name}",
                         style = MaterialTheme.typography.titleLarge,
@@ -537,8 +710,8 @@ fun PreferenceSetupScreen(
         modifier = modifier
             .fillMaxSize()
             .background(HarborColors.Background)
-            .padding(horizontal = 42.dp, vertical = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+            .padding(horizontal = 42.dp, vertical = 30.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
         item {
             Row(
@@ -546,18 +719,39 @@ fun PreferenceSetupScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "Preferences & Filtering (${activeProfile.name})",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = HarborColors.TextPrimary
-                    )
-                    Text(
-                        text = "Exclusions are enforced before thumbnails load across Home, Categories, Search, Favorites, History, and Playback.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = HarborColors.TextSecondary
-                    )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(HarborColors.FocusCyan.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Settings,
+                            contentDescription = null,
+                            tint = HarborColors.FocusCyan,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Viewing Preferences (${activeProfile.name})",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = HarborColors.TextPrimary
+                        )
+                        Text(
+                            text = "Hidden tags and filters apply everywhere before thumbnails load—across Home, Categories, Search, Favorites, History, and Playback.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = HarborColors.TextSecondary
+                        )
+                    }
                 }
+                Spacer(modifier = Modifier.width(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     TvActionButton(
                         label = "Save & Browse",
@@ -574,11 +768,24 @@ fun PreferenceSetupScreen(
         }
 
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(HarborColors.SurfaceCard)
+                    .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(16.dp))
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(
-                    text = "Canonical Tag Rules (Press OK/Center to cycle: Neutral -> Preferred (+) -> Excluded (x))",
+                    text = "Topic & Tag Rules",
                     style = MaterialTheme.typography.titleLarge,
                     color = HarborColors.TextPrimary
+                )
+                Text(
+                    text = "Press OK on any tag to cycle: Neutral -> Preferred (+) -> Excluded (x).",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = HarborColors.TextSecondary
                 )
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -624,7 +831,7 @@ fun PreferenceSetupScreen(
         }
 
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     text = "Unknown Metadata Policy",
                     style = MaterialTheme.typography.titleLarge,
@@ -632,7 +839,7 @@ fun PreferenceSetupScreen(
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     val isStandard = activeProfile.unknownMetadataMode == UnknownMetadataMode.STANDARD
                     TvFocusableCard(
@@ -640,14 +847,25 @@ fun PreferenceSetupScreen(
                         modifier = Modifier.weight(1f),
                         unfocusedBorderColor = if (isStandard) HarborColors.FocusCyan else HarborColors.BorderSubtle
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isStandard) Icons.Rounded.CheckCircle else Icons.Rounded.Info,
+                                    contentDescription = null,
+                                    tint = if (isStandard) HarborColors.FocusCyan else HarborColors.TextSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "Standard Mode${if (isStandard) " • Active" else ""}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = if (isStandard) HarborColors.FocusCyan else HarborColors.TextPrimary
+                                )
+                            }
                             Text(
-                                text = "Standard Mode${if (isStandard) " [Active]" else ""}",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = if (isStandard) HarborColors.FocusCyan else HarborColors.TextPrimary
-                            )
-                            Text(
-                                text = "Items with unknown optional tags remain eligible unless an exclusion matches.",
+                                text = "Videos with unmapped optional tags remain visible unless an exclusion rule matches.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = HarborColors.TextSecondary
                             )
@@ -660,14 +878,25 @@ fun PreferenceSetupScreen(
                         modifier = Modifier.weight(1f),
                         unfocusedBorderColor = if (isStrict) HarborColors.FocusCyan else HarborColors.BorderSubtle
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isStrict) Icons.Rounded.CheckCircle else Icons.Rounded.Lock,
+                                    contentDescription = null,
+                                    tint = if (isStrict) HarborColors.FocusCyan else HarborColors.TextSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "Strict Mode${if (isStrict) " • Active" else ""}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = if (isStrict) HarborColors.FocusCyan else HarborColors.TextPrimary
+                                )
+                            }
                             Text(
-                                text = "Strict Mode${if (isStrict) " [Active]" else ""}",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = if (isStrict) HarborColors.FocusCyan else HarborColors.TextPrimary
-                            )
-                            Text(
-                                text = "Items lacking complete classification are hidden. Note: classification depends on source metadata and taxonomy mappings.",
+                                text = "Videos lacking complete classification are hidden. Classification depends on source metadata and taxonomy mappings.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = HarborColors.TextSecondary
                             )
@@ -678,12 +907,23 @@ fun PreferenceSetupScreen(
         }
 
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "Default Stream Quality Preference",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = HarborColors.TextPrimary
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Star,
+                        contentDescription = null,
+                        tint = HarborColors.Gold4K,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                        text = "Default Stream Quality Preference",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = HarborColors.TextPrimary
+                    )
+                }
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)

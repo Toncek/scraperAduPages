@@ -216,6 +216,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         rowsBySource = state.homeRowsBySource,
                         featuredHomeItem = state.featuredHomeItem,
                         only4kFilter = state.only4kFilter,
+                        previewEnabled = state.focusPreviewEnabled,
                         watchHistory = state.watchHistory,
                         isLoading = state.isLoading,
                         errorMessage = state.errorMessage,
@@ -244,6 +245,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         items = state.categoryItems,
                         only4kFilter = state.only4kFilter,
                         sortMode = state.categorySortMode,
+                        previewEnabled = state.focusPreviewEnabled,
                         nextCursor = state.categoryNextCursor,
                         pagesLoaded = state.categoryPagesLoaded,
                         isLoading = state.isLoading,
@@ -268,6 +270,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         results = state.searchResults,
                         only4kFilter = state.only4kFilter,
                         sortMode = state.searchSortMode,
+                        previewEnabled = state.focusPreviewEnabled,
                         sourceErrors = state.searchErrors,
                         isLoading = state.isLoading,
                         lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.SEARCH],
@@ -309,13 +312,15 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         controller = viewModel.playerController,
                         onExitPlayback = { viewModel.navigateBack() },
                         onPlayPrevious = { viewModel.playPreviousInQueue() },
-                        onPlayNext = { viewModel.playNextInQueue() }
+                        onPlayNext = { viewModel.playNextInQueue() },
+                        autoPlayNextEnabled = state.autoPlayNextEnabled
                     )
                 }
 
                 HarborScreen.FAVORITES -> {
                     FavoritesScreen(
                         favorites = state.favorites,
+                        previewEnabled = state.focusPreviewEnabled,
                         lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.FAVORITES],
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.FAVORITES, key) },
                         onOpenVideo = { item -> viewModel.openVideoDetails(item) },
@@ -381,6 +386,8 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         isPrivateSession = state.isPrivateSession,
                         offlineFixtureMode = state.offlineFixtureMode,
                         videoPreloadEnabled = state.videoPreloadEnabled,
+                        autoPlayNextEnabled = state.autoPlayNextEnabled,
+                        focusPreviewEnabled = state.focusPreviewEnabled,
                         mediaCacheLimitMb = state.mediaCacheLimitMb,
                         mediaCacheUsedBytes = state.mediaCacheUsedBytes,
                         mediaCacheMaxBytes = state.mediaCacheMaxBytes,
@@ -396,6 +403,8 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         onToggleHistoryEnabled = { enabled -> viewModel.setHistoryEnabled(enabled) },
                         onToggleOfflineFixtureMode = { enabled -> viewModel.setOfflineFixtureMode(enabled) },
                         onToggleVideoPreload = { enabled -> viewModel.setVideoPreloadEnabled(enabled) },
+                        onToggleAutoPlayNext = { enabled -> viewModel.setAutoPlayNextEnabled(enabled) },
+                        onToggleFocusPreview = { enabled -> viewModel.setFocusPreviewEnabled(enabled) },
                         onSetMediaCacheLimitMb = { mb -> viewModel.setMediaCacheLimitMb(mb) },
                         onSetProfilePin = { pin -> viewModel.setProfilePin(pin) },
                         onClearCacheAndHistory = { viewModel.clearCacheAndHistory() },

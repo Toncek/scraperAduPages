@@ -131,6 +131,8 @@ data class HarborUiState(
     val preferences: PreferenceConfig = PreferenceConfig(),
     val offlineFixtureMode: Boolean = false,
     val videoPreloadEnabled: Boolean = true,
+    val autoPlayNextEnabled: Boolean = true,
+    val focusPreviewEnabled: Boolean = true,
     val mediaCacheLimitMb: Int = HarborSettingsStore.DEFAULT_MEDIA_CACHE_LIMIT_MB,
     val mediaCacheUsedBytes: Long = 0L,
     val mediaCacheMaxBytes: Long = HarborSettingsStore.DEFAULT_MEDIA_CACHE_LIMIT_MB.toLong() * 1024L * 1024L,
@@ -270,6 +272,8 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
             val onboardingDone = settingsStore.isOnboardingCompleted()
             val privateSession = settingsStore.isPrivateSession()
             val videoPreloadEnabled = settingsStore.isVideoPreloadEnabled()
+            val autoPlayNextEnabled = settingsStore.isAutoPlayNextEnabled()
+            val focusPreviewEnabled = settingsStore.isFocusPreviewEnabled()
             val cacheLimitMb = settingsStore.getMediaCacheLimitMb()
             playerController.configureMediaCacheLimit(cacheLimitMb)
             val activeId = settingsStore.getActiveProfileId()
@@ -290,6 +294,8 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     activeProfile = activeProfile,
                     isPrivateSession = privateSession,
                     videoPreloadEnabled = videoPreloadEnabled,
+                    autoPlayNextEnabled = autoPlayNextEnabled,
+                    focusPreviewEnabled = focusPreviewEnabled,
                     mediaCacheLimitMb = cacheLimitMb,
                     preferences = prefs
                 )
@@ -735,6 +741,38 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                         "Background ROM video preloading enabled"
                     } else {
                         "Background ROM video preloading disabled"
+                    }
+                )
+            }
+        }
+    }
+
+    fun setAutoPlayNextEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsStore.setAutoPlayNextEnabled(enabled)
+            _uiState.update {
+                it.copy(
+                    autoPlayNextEnabled = enabled,
+                    statusMessage = if (enabled) {
+                        "Auto-play next video enabled"
+                    } else {
+                        "Auto-play next video disabled"
+                    }
+                )
+            }
+        }
+    }
+
+    fun setFocusPreviewEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsStore.setFocusPreviewEnabled(enabled)
+            _uiState.update {
+                it.copy(
+                    focusPreviewEnabled = enabled,
+                    statusMessage = if (enabled) {
+                        "Thumbnail storyboard preview enabled"
+                    } else {
+                        "Thumbnail storyboard preview disabled"
                     }
                 )
             }

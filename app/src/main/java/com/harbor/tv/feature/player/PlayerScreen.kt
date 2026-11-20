@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -49,6 +50,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
@@ -74,6 +76,7 @@ fun PlayerScreen(
     onExitPlayback: () -> Unit,
     onPlayPrevious: () -> Unit = {},
     onPlayNext: () -> Unit = {},
+    autoPlayNextEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val uiState by controller.uiState.collectAsState()
@@ -81,13 +84,42 @@ fun PlayerScreen(
     var activePanel by remember { mutableStateOf(PlayerPanel.NONE) }
     var lastInteractionTick by remember { mutableStateOf(0L) }
     var timelineFocused by remember { mutableStateOf(false) }
+    var upNextCancelled by remember(uiState.sourceItemId) { mutableStateOf(false) }
+    var upNextCountdownSec by remember(uiState.sourceItemId, uiState.isEnded) { mutableIntStateOf(5) }
 
     val rootFocusRequester = remember { FocusRequester() }
     val playPauseFocusRequester = remember { FocusRequester() }
     val panelFirstItemFocusRequester = remember { FocusRequester() }
+    val upNextPlayFocusRequester = remember { FocusRequester() }
+
+    val showUpNextOverlay = uiState.isEnded &&
+        uiState.hasNextInQueue &&
+        autoPlayNextEnabled &&
+        uiState.errorMessage == null &&
+        !upNextCancelled
 
     fun bumpInteraction() {
         lastInteractionTick = System.currentTimeMillis()
+    }
+
+    LaunchedEffect(uiState.isEnded) {
+        if (!uiState.isEnded) {
+            upNextCancelled = false
+        }
+    }
+
+    LaunchedEffect(showUpNextOverlay, uiState.sourceItemId) {
+        if (showUpNextOverlay) {
+            controlsVisible = false
+            activePanel = PlayerPanel.NONE
+            upNextCountdownSec = 5
+            runCatching { upNextPlayFocusRequester.requestFocus() }
+            while (upNextCountdownSec > 0) {
+                delay(1_000L)
+                upNextCountdownSec -= 1
+            }
+            onPlayNext()
+        }
     }
 
     // Auto-hide controls after 6 seconds of inactivity while playing and no panel is open
@@ -99,8 +131,10 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(controlsVisible, activePanel) {
-        if (activePanel != PlayerPanel.NONE) {
+    LaunchedEffect(controlsVisible, activePanel, showUpNextOverlay) {
+        if (showUpNextOverlay) {
+            runCatching { upNextPlayFocusRequester.requestFocus() }
+        } else if (activePanel != PlayerPanel.NONE) {
             runCatching { panelFirstItemFocusRequester.requestFocus() }
         } else if (controlsVisible) {
             runCatching { playPauseFocusRequester.requestFocus() }
@@ -111,6 +145,10 @@ fun PlayerScreen(
 
     BackHandler {
         when {
+            showUpNextOverlay -> {
+                upNextCancelled = true
+                controlsVisible = true
+            }
             activePanel != PlayerPanel.NONE -> {
                 activePanel = PlayerPanel.NONE
                 bumpInteraction()
@@ -699,6 +737,63 @@ fun PlayerScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        if (showUpNextOverlay) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 36.dp, bottom = 36.dp)
+                    .width(420.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(HarborColors.Surface.copy(alpha = 0.96f))
+                    .border(2.dp, HarborColors.FocusCyan, RoundedCornerShape(16.dp))
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Up Next in ${upNextCountdownSec}s",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = HarborColors.FocusCyan,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (!uiState.upNextPreloadLabel.isNullOrBlank()) {
+                        Text(
+                            text = uiState.upNextPreloadLabel.orEmpty(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = HarborColors.AccentTeal
+                        )
+                    }
+                }
+                Text(
+                    text = uiState.nextItemTitle ?: "Next Video",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = HarborColors.TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TvActionButton(
+                        label = "Play Next Now",
+                        tone = TvButtonTone.PRIMARY,
+                        focusRequester = upNextPlayFocusRequester,
+                        onClick = { onPlayNext() }
+                    )
+                    TvActionButton(
+                        label = "Cancel",
+                        tone = TvButtonTone.SECONDARY,
+                        onClick = {
+                            upNextCancelled = true
+                            controlsVisible = true
+                        }
+                    )
                 }
             }
         }

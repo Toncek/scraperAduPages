@@ -80,6 +80,7 @@ data class PlayerUiState(
     val sourceItemId: String = "",
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
+    val isEnded: Boolean = false,
     val currentPositionMs: Long = 0L,
     val durationMs: Long = 0L,
     val isSeekable: Boolean = false,
@@ -229,16 +230,18 @@ class HarborPlayerController(
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             val buffering = playbackState == Player.STATE_BUFFERING
+            val ended = playbackState == Player.STATE_ENDED
             val duration = player.duration.takeIf { it != C.TIME_UNSET && it >= 0L } ?: 0L
             _uiState.update {
                 it.copy(
                     isBuffering = buffering,
+                    isEnded = ended,
                     durationMs = duration,
                     isSeekable = player.isCurrentMediaItemSeekable,
                     isLive = player.isCurrentMediaItemLive
                 )
             }
-            if (playbackState == Player.STATE_ENDED) {
+            if (ended) {
                 persistProgressIfAllowed(force = true)
             }
         }
@@ -331,6 +334,7 @@ class HarborPlayerController(
             if (player.playbackState == Player.STATE_ENDED) {
                 player.seekTo(0L)
             }
+            _uiState.update { it.copy(isEnded = false) }
             player.play()
         }
     }
@@ -340,7 +344,7 @@ class HarborPlayerController(
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: Long.MAX_VALUE
         val target = (player.currentPosition + deltaMs).coerceIn(0L, duration)
         player.seekTo(target)
-        _uiState.update { it.copy(currentPositionMs = target) }
+        _uiState.update { it.copy(currentPositionMs = target, isEnded = false) }
     }
 
     fun seekTo(positionMs: Long) {
@@ -348,7 +352,7 @@ class HarborPlayerController(
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: Long.MAX_VALUE
         val target = positionMs.coerceIn(0L, duration)
         player.seekTo(target)
-        _uiState.update { it.copy(currentPositionMs = target) }
+        _uiState.update { it.copy(currentPositionMs = target, isEnded = false) }
     }
 
     fun selectAudioTrack(option: PlayerTrackOption) {
@@ -400,6 +404,7 @@ class HarborPlayerController(
         onSaveProgressCallback = null
         onQuarterProgressReachedCallback = null
         quarterProgressFired = false
+        _uiState.update { it.copy(isEnded = false, isPlaying = false, isBuffering = false) }
     }
 
     fun release() {
@@ -481,6 +486,7 @@ class HarborPlayerController(
     }
 
     private fun prepareCandidate(candidate: PlaybackCandidate, startPositionMs: Long) {
+        _uiState.update { it.copy(isEnded = false) }
         val httpFactory = HarborOkHttpDataSourceFactory(
             baseClient = baseOkHttpClient,
             customHeaders = candidate.headers,

@@ -52,6 +52,8 @@ class HarborSettingsStore(
         private val KEY_PRIVATE_SESSION = booleanPreferencesKey("private_session_enabled")
         private val KEY_VIDEO_PRELOAD_ENABLED = booleanPreferencesKey("video_preload_enabled")
         private val KEY_MEDIA_CACHE_LIMIT_MB = intPreferencesKey("media_cache_limit_mb")
+        private val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next_enabled")
+        private val KEY_FOCUS_PREVIEW_ENABLED = booleanPreferencesKey("focus_preview_enabled")
 
         private fun preferenceConfigKey(profileId: String): Preferences.Key<String> {
             return stringPreferencesKey("profile_preferences_${profileId.trim()}")
@@ -77,6 +79,14 @@ class HarborSettingsStore(
     val mediaCacheLimitMbFlow: Flow<Int> = dataStore.data.map { prefs ->
         (prefs[KEY_MEDIA_CACHE_LIMIT_MB] ?: DEFAULT_MEDIA_CACHE_LIMIT_MB)
             .coerceIn(MIN_MEDIA_CACHE_LIMIT_MB, MAX_MEDIA_CACHE_LIMIT_MB)
+    }
+
+    val autoPlayNextEnabledFlow: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_AUTO_PLAY_NEXT] ?: true
+    }
+
+    val focusPreviewEnabledFlow: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_FOCUS_PREVIEW_ENABLED] ?: true
     }
 
     suspend fun getActiveProfileId(): String = activeProfileIdFlow.first()
@@ -118,6 +128,22 @@ class HarborSettingsStore(
         val clamped = limitMb.coerceIn(MIN_MEDIA_CACHE_LIMIT_MB, MAX_MEDIA_CACHE_LIMIT_MB)
         dataStore.edit { prefs ->
             prefs[KEY_MEDIA_CACHE_LIMIT_MB] = clamped
+        }
+    }
+
+    suspend fun isAutoPlayNextEnabled(): Boolean = autoPlayNextEnabledFlow.first()
+
+    suspend fun setAutoPlayNextEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_AUTO_PLAY_NEXT] = enabled
+        }
+    }
+
+    suspend fun isFocusPreviewEnabled(): Boolean = focusPreviewEnabledFlow.first()
+
+    suspend fun setFocusPreviewEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_FOCUS_PREVIEW_ENABLED] = enabled
         }
     }
 

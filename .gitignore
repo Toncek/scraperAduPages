@@ -19,3 +19,8 @@ local.properties
 
 # Reference research clone (do not commit nested git repo)
 Magic-PH/
+
+# Local release signing secrets
+keystore.properties
+*.jks
+*.keystore

@@ -3,7 +3,7 @@ schemaVersion: "1.0"
 source:
   id: "porntrex-html"
   name: "PornTrex Video Catalog"
-  version: "1.2.0"
+  version: "1.3.0"
   description: "Level 1/3 4K-capable HTML catalog and flashvars MP4 candidate extraction for PornTrex."
   author: "Harbor Reference"
   language: "en"
@@ -144,6 +144,14 @@ operations:
               selector: "img.cover"
               read: "attribute"
               attribute: "src"
+            transforms:
+              - op: "resolveUrl"
+            required: false
+          thumbnailReferences:
+            selector: "ul.screenshots-list li.screenshot-item"
+            read: "attribute"
+            attribute: "data-src"
+            cardinality: "many"
             transforms:
               - op: "resolveUrl"
             required: false

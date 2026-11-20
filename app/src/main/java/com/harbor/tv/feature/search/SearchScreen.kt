@@ -57,6 +57,7 @@ fun SearchScreen(
     results: List<CatalogItem>,
     only4kFilter: Boolean = false,
     sortMode: CatalogSortMode = CatalogSortMode.DEFAULT,
+    previewEnabled: Boolean = true,
     sourceErrors: Map<String, String>,
     isLoading: Boolean,
     lastFocusedKey: String?,
@@ -323,6 +324,7 @@ fun SearchScreen(
                     item = item,
                     focusRequester = requesterFor(key),
                     onFocused = { onFocusKeyChanged(key) },
+                    previewEnabled = previewEnabled,
                     onClick = { onOpenVideo(item) }
                 )
             }

@@ -553,6 +553,13 @@ class UnifiedOperationExtractor(
             MetadataCompleteness.COMPLETE
         }
 
+        val combinedThumbnails = (
+            record.list("thumbnailUrl") +
+                record.list("thumbnailReferences") +
+                record.list("previewThumbnails")
+            ).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val sampledThumbnails = sampleThumbnails(combinedThumbnails)
+
         return CatalogItem(
             sourceId = definition.source.id,
             sourceItemId = id,
@@ -564,7 +571,7 @@ class UnifiedOperationExtractor(
             sourceTags = sourceTags,
             languages = record.list("languages"),
             contentRating = record.firstOrNull("contentRating"),
-            thumbnailReferences = record.list("thumbnailUrl"),
+            thumbnailReferences = sampledThumbnails,
             maxQualityLabel = maxQualityLabel,
             maxResolutionHeight = maxResolutionHeight,
             metadataCompleteness = completeness,
@@ -662,6 +669,15 @@ class UnifiedOperationExtractor(
             text.trim().toIntOrNull()?.takeIf { it in 144..4320 }?.let { return it }
         }
         return null
+    }
+
+    private fun sampleThumbnails(urls: List<String>, maxCount: Int = 6): List<String> {
+        if (urls.size <= maxCount) return urls
+        if (maxCount <= 1) return urls.take(maxCount)
+        return (0 until maxCount).map { i ->
+            val idx = (i * (urls.size - 1)) / (maxCount - 1)
+            urls[idx]
+        }.distinct()
     }
 
     private fun allowedCatalogHostSet(definition: SourceDefinition): Set<String> {

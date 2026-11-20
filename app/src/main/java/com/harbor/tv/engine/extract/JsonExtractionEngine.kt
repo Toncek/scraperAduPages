@@ -316,7 +316,12 @@ class JsonExtractionEngine(
             is JsonArray -> element.mapNotNull { item ->
                 when (item) {
                     is JsonObject -> {
-                        val candidate = item["tag_name"] ?: item["name"] ?: item["tag"] ?: item["category"]
+                        val candidate = item["tag_name"]
+                            ?: item["name"]
+                            ?: item["tag"]
+                            ?: item["category"]
+                            ?: item["src"]
+                            ?: item["url"]
                         extractScalarString(candidate)?.takeIf { it.isNotBlank() }
                     }
                     else -> extractScalarString(item)?.takeIf { it.isNotBlank() }

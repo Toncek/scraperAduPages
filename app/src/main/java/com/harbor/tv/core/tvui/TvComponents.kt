@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
@@ -37,10 +38,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -576,9 +581,13 @@ fun TvVideoCard(
     focusRequester: FocusRequester? = null,
     onFocused: (() -> Unit)? = null,
     showSourceBadge: Boolean = true,
-    progressFraction: Float? = null
+    progressFraction: Float? = null,
+    previewEnabled: Boolean = true
 ) {
-    val thumbUrl = item.thumbnailReferences.firstOrNull()?.takeIf { it.isNotBlank() }
+    val thumbs = remember(item.thumbnailReferences) {
+        item.thumbnailReferences.filter { it.isNotBlank() }
+    }
+    var activeThumbIndex by remember(item.compositeId) { mutableIntStateOf(0) }
     val qualityBadge = resolveQualityBadge(
         maxResolutionHeight = item.maxResolutionHeight,
         maxQualityLabel = item.maxQualityLabel,
@@ -595,6 +604,24 @@ fun TvVideoCard(
         focusedScale = 1.05f,
         contentPadding = 0.dp
     ) { isFocused ->
+        LaunchedEffect(isFocused, previewEnabled, thumbs) {
+            if (isFocused && previewEnabled && thumbs.size > 1) {
+                delay(700L)
+                while (isActive) {
+                    activeThumbIndex = (activeThumbIndex + 1) % thumbs.size
+                    delay(1200L)
+                }
+            } else {
+                activeThumbIndex = 0
+            }
+        }
+        val effectiveIndex = if (isFocused && previewEnabled && thumbs.size > 1) {
+            activeThumbIndex.coerceIn(0, thumbs.lastIndex)
+        } else {
+            0
+        }
+        val thumbUrl = thumbs.getOrNull(effectiveIndex)
+
         Column {
             Box(
                 modifier = Modifier
@@ -680,6 +707,41 @@ fun TvVideoCard(
                             color = HarborColors.Background,
                             fontWeight = FontWeight.ExtraBold
                         )
+                    }
+                }
+
+                // Minimalist storyboard frame dots while cycling on focus
+                if (isFocused && previewEnabled && thumbs.size > 1 && effectiveIndex > 0) {
+                    val dotCount = thumbs.size.coerceAtMost(8)
+                    val activeDot = if (thumbs.size <= 8) {
+                        effectiveIndex
+                    } else {
+                        ((effectiveIndex.toFloat() / (thumbs.size - 1).coerceAtLeast(1)) * (dotCount - 1))
+                            .toInt()
+                            .coerceIn(0, dotCount - 1)
+                    }
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = if (progressFraction != null && progressFraction > 0f) 9.dp else 7.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0x99050810))
+                            .padding(horizontal = 6.dp, vertical = 3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        for (dotIdx in 0 until dotCount) {
+                            val selected = dotIdx == activeDot
+                            Box(
+                                modifier = Modifier
+                                    .size(if (selected) 6.dp else 4.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (selected) HarborColors.FocusCyan
+                                        else Color(0x88E2E8F0)
+                                    )
+                            )
+                        }
                     }
                 }
 
