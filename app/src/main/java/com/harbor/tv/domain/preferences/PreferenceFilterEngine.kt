@@ -171,6 +171,16 @@ class PreferenceFilterEngine {
             }
         }
 
+        if (preferences.minResolutionHeight > 0) {
+            val itemHeight = item.maxResolutionHeight
+            if (itemHeight != null && itemHeight < preferences.minResolutionHeight) {
+                return false
+            }
+            if (itemHeight == null && preferences.unknownMetadataMode == UnknownMetadataMode.STRICT) {
+                return false
+            }
+        }
+
         return true
     }
 

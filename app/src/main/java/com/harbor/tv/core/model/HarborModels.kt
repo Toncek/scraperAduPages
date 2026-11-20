@@ -162,7 +162,25 @@ data class PreferenceConfig(
     val includeLive: Boolean = true,
     val includeOnDemand: Boolean = true,
     val unknownMetadataMode: UnknownMetadataMode = UnknownMetadataMode.STANDARD,
-    val requiredCanonicalTagPrefixes: Set<String> = emptySet()
+    val requiredCanonicalTagPrefixes: Set<String> = emptySet(),
+    val minResolutionHeight: Int = 0,
+    val avoidRepeatsEnabled: Boolean = true
+)
+
+data class LabelComboSuggestion(
+    val labels: List<String>,
+    val displayTitle: String,
+    val searchQuery: String,
+    val score: Double
+)
+
+data class UserTasteProfile(
+    val profileId: String = "default",
+    val labelScores: Map<String, Double> = emptyMap(),
+    val pairScores: Map<String, Double> = emptyMap(),
+    val sourceScores: Map<String, Double> = emptyMap(),
+    val seenItemIds: List<String> = emptyList(),
+    val totalInteractions: Int = 0
 )
 
 data class SourceDiagnosticsReport(

@@ -13,6 +13,7 @@ import com.harbor.tv.core.model.DeviceCodecCapabilities
 import com.harbor.tv.core.model.HarborErrorCode
 import com.harbor.tv.core.model.HarborException
 import com.harbor.tv.core.model.HostPurpose
+import com.harbor.tv.core.model.LabelComboSuggestion
 import com.harbor.tv.core.model.MagicPhWebsiteProfile
 import com.harbor.tv.core.model.PlaybackCandidate
 import com.harbor.tv.core.model.PlaybackResolutionResult
@@ -22,6 +23,7 @@ import com.harbor.tv.core.model.SourceDiagnosticsReport
 import com.harbor.tv.core.model.TagPreferenceState
 import com.harbor.tv.core.model.UnknownMetadataMode
 import com.harbor.tv.core.model.UserProfile
+import com.harbor.tv.core.model.UserTasteProfile
 import com.harbor.tv.core.network.ControlledHttpTransport
 import com.harbor.tv.core.network.HttpResponseData
 import com.harbor.tv.core.network.HttpTransport
@@ -36,6 +38,7 @@ import com.harbor.tv.domain.catalog.CatalogNormalizer
 import com.harbor.tv.domain.catalog.CatalogRepository
 import com.harbor.tv.domain.playback.PlaybackResolver
 import com.harbor.tv.domain.preferences.PreferenceFilterEngine
+import com.harbor.tv.domain.preferences.UserTasteEngine
 import com.harbor.tv.domain.sources.MagicPhSettingsAdapter
 import com.harbor.tv.domain.sources.SourceRegistry
 import com.harbor.tv.engine.definition.DefinitionImporter
@@ -148,6 +151,9 @@ data class HarborUiState(
     val featuredHomeItem: CatalogItem? = null,
     val only4kFilter: Boolean = false,
     val watchHistory: List<CatalogRepository.WatchHistoryRecord> = emptyList(),
+    val tasteProfile: UserTasteProfile = UserTasteProfile(),
+    val topLabelCombos: List<LabelComboSuggestion> = emptyList(),
+    val personalizedFreshItems: List<CatalogItem> = emptyList(),
 
     val selectedCategorySourceId: String? = null,
     val categoriesForSelectedSource: List<CategoryItem> = emptyList(),
@@ -193,6 +199,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
     private val extractor = UnifiedOperationExtractor(policyEngine = policyEngine)
     private val normalizer = CatalogNormalizer(policyEngine = policyEngine)
     private val filterEngine = PreferenceFilterEngine()
+    private val tasteEngine = UserTasteEngine()
     private val fixtureRunner = FixtureRunner(extractor = extractor, policyEngine = policyEngine)
 
     val sourceRegistry = SourceRegistry(
@@ -248,6 +255,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
     private val navBackStack = ArrayDeque<HarborScreen>()
     private var activePaginationSession: CatalogRepository.PaginationSession? = null
     private var refreshHomeJob: Job? = null
+    private var homeRefreshCycle: Int = 0
     private val homeMergeMutex = Mutex()
     private var selectedVideoPlaybackResolvedAtMs: Long = 0L
     private var rawCategoryItems: List<CatalogItem> = emptyList()
@@ -285,6 +293,8 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 ?: UserProfile(id = "default", name = "Default", isPrivateSession = privateSession)
             val prefs = settingsStore.getPreferences(activeProfile.id)
                 .copy(unknownMetadataMode = activeProfile.unknownMetadataMode)
+            val tasteProfile = settingsStore.getTasteProfile(activeProfile.id)
+            val topCombos = tasteEngine.buildTopCombinations(tasteProfile)
 
             _uiState.update {
                 it.copy(
@@ -297,7 +307,9 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     autoPlayNextEnabled = autoPlayNextEnabled,
                     focusPreviewEnabled = focusPreviewEnabled,
                     mediaCacheLimitMb = cacheLimitMb,
-                    preferences = prefs
+                    preferences = prefs,
+                    tasteProfile = tasteProfile,
+                    topLabelCombos = topCombos
                 )
             }
             refreshMediaCacheStats()
@@ -562,6 +574,8 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
             val privateSession = _uiState.value.isPrivateSession
             val loadedPrefs = settingsStore.getPreferences(profile.id)
                 .copy(unknownMetadataMode = profile.unknownMetadataMode)
+            val loadedTaste = settingsStore.getTasteProfile(profile.id)
+            val loadedCombos = tasteEngine.buildTopCombinations(loadedTaste)
 
             // Spec 25.3: Switching profiles clears old visible results immediately
             activePaginationSession = null
@@ -569,6 +583,9 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 it.copy(
                     activeProfile = profile.copy(isPrivateSession = privateSession),
                     preferences = loadedPrefs,
+                    tasteProfile = loadedTaste,
+                    topLabelCombos = loadedCombos,
+                    personalizedFreshItems = emptyList(),
                     homeRowsBySource = emptyMap(),
                     homeQuickCategories = emptyList(),
                     featuredHomeItem = null,
@@ -779,6 +796,59 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun setMinResolutionHeight(minHeight: Int) {
+        val clamped = minHeight.coerceAtLeast(0)
+        val updated = _uiState.value.preferences.copy(minResolutionHeight = clamped)
+        savePreferences(updated)
+        _uiState.update {
+            it.copy(
+                statusMessage = if (clamped == 0) {
+                    "Minimum quality restriction removed"
+                } else {
+                    "Minimum video quality set to ${clamped}p+"
+                }
+            )
+        }
+    }
+
+    fun setAvoidRepeatsEnabled(enabled: Boolean) {
+        val updated = _uiState.value.preferences.copy(avoidRepeatsEnabled = enabled)
+        savePreferences(updated)
+        _uiState.update {
+            it.copy(
+                statusMessage = if (enabled) {
+                    "Prioritizing fresh, unseen videos"
+                } else {
+                    "Freshness repeat avoidance disabled"
+                }
+            )
+        }
+    }
+
+    fun applyLabelCombo(combo: LabelComboSuggestion) {
+        recordLabelTaste(combo.labels, weight = 2.5)
+        _uiState.update { it.copy(searchQuery = combo.searchQuery) }
+        navigateTo(HarborScreen.SEARCH)
+        executeSearch(combo.searchQuery, recordTaste = false)
+    }
+
+    fun resetTasteStats() {
+        viewModelScope.launch {
+            val profileId = _uiState.value.activeProfile.id
+            settingsStore.resetTasteProfile(profileId)
+            val emptyTaste = UserTasteProfile(profileId = profileId)
+            _uiState.update {
+                it.copy(
+                    tasteProfile = emptyTaste,
+                    topLabelCombos = emptyList(),
+                    personalizedFreshItems = emptyList(),
+                    statusMessage = "Local taste statistics reset"
+                )
+            }
+            refreshHome()
+        }
+    }
+
     fun setMediaCacheLimitMb(limitMb: Int) {
         viewModelScope.launch {
             val clamped = limitMb.coerceIn(
@@ -821,7 +891,10 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
             preloadedNextCompositeId = null
             preloadedNextResolution = null
             db.catalogCacheDao().clearAll()
-            catalogRepository.clearWatchHistory(_uiState.value.activeProfile.id)
+            val profileId = _uiState.value.activeProfile.id
+            catalogRepository.clearWatchHistory(profileId)
+            settingsStore.resetTasteProfile(profileId)
+            val emptyTaste = UserTasteProfile(profileId = profileId)
             val loader = Coil.imageLoader(appContext)
             loader.memoryCache?.clear()
             withContext(Dispatchers.IO) {
@@ -833,7 +906,10 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update {
                 it.copy(
                     watchHistory = emptyList(),
-                    statusMessage = "Cleared catalog, image, HTTP, and media caches and watch history"
+                    tasteProfile = emptyTaste,
+                    topLabelCombos = emptyList(),
+                    personalizedFreshItems = emptyList(),
+                    statusMessage = "Cleared catalog, image, HTTP, and media caches, taste stats, and watch history"
                 )
             }
         }
@@ -922,10 +998,106 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         ) ?: all.firstOrNull()
     }
 
+    private fun recordItemTaste(item: CatalogItem, weight: Double) {
+        val state = _uiState.value
+        if (state.isPrivateSession) return
+        val updatedTaste = tasteEngine.recordInteraction(state.tasteProfile, item, weight)
+        val combos = tasteEngine.buildTopCombinations(updatedTaste)
+        _uiState.update {
+            it.copy(
+                tasteProfile = updatedTaste,
+                topLabelCombos = combos
+            )
+        }
+        viewModelScope.launch {
+            settingsStore.saveTasteProfile(updatedTaste)
+        }
+    }
+
+    private fun recordLabelTaste(rawLabels: List<String>, weight: Double) {
+        val state = _uiState.value
+        if (state.isPrivateSession || rawLabels.isEmpty()) return
+        val updatedTaste = tasteEngine.recordLabelInteraction(state.tasteProfile, rawLabels, weight)
+        val combos = tasteEngine.buildTopCombinations(updatedTaste)
+        _uiState.update {
+            it.copy(
+                tasteProfile = updatedTaste,
+                topLabelCombos = combos
+            )
+        }
+        viewModelScope.launch {
+            settingsStore.saveTasteProfile(updatedTaste)
+        }
+    }
+
+    private fun currentWatchedCompositeIds(): Set<String> {
+        return _uiState.value.watchHistory.mapTo(HashSet()) { it.item.compositeId }
+    }
+
+    private fun buildPersonalizedFreshPicks(
+        rowsBySource: Map<String, List<CatalogItem>>,
+        taste: UserTasteProfile,
+        watchedIds: Set<String>,
+        avoidRepeats: Boolean
+    ): List<CatalogItem> {
+        val allItems = rowsBySource.values
+            .flatten()
+            .distinctBy { it.compositeId }
+        if (allItems.isEmpty()) return emptyList()
+
+        val ranked = tasteEngine.rankFreshAndPersonalized(
+            items = allItems,
+            taste = taste,
+            watchedCompositeIds = watchedIds,
+            avoidRepeats = avoidRepeats,
+            excludeWatched = avoidRepeats
+        )
+        if (taste.labelScores.isEmpty()) {
+            return ranked.take(12)
+        }
+        val topLabelSet = taste.labelScores.entries
+            .sortedByDescending { it.value }
+            .take(10)
+            .mapTo(HashSet()) { it.key }
+        val (matchingTop, remaining) = ranked.partition { item ->
+            tasteEngine.extractItemLabels(item).any { it in topLabelSet }
+        }
+        return (matchingTop + remaining).take(12)
+    }
+
+    private fun selectRotatedCategoryForHome(
+        cats: List<CategoryItem>,
+        taste: UserTasteProfile,
+        refreshCycle: Int
+    ): CategoryItem {
+        if (cats.size <= 1) return cats.first()
+        val orderedCats = if (taste.labelScores.isEmpty()) {
+            cats
+        } else {
+            val scored = cats.mapIndexed { idx, cat ->
+                val cleaned = tasteEngine.cleanLabel(cat.title)
+                val tokens = cat.title.split(Regex("""[\s\-_/]+"""))
+                    .mapNotNull { tasteEngine.cleanLabel(it) }
+                val score = (listOfNotNull(cleaned) + tokens).distinct()
+                    .sumOf { taste.labelScores[it] ?: 0.0 }
+                Triple(cat, score, idx)
+            }
+            val preferred = scored.filter { it.second > 0.0 }
+                .sortedByDescending { it.second }
+                .map { it.first }
+            val rest = scored.filter { it.second <= 0.0 }
+                .sortedBy { it.third }
+                .map { it.first }
+            preferred + rest
+        }
+        return orderedCats[refreshCycle % orderedCats.size]
+    }
+
     fun refreshHome() {
         refreshHomeJob?.cancel()
         refreshHomeJob = viewModelScope.launch {
             val state = _uiState.value
+            val cycle = homeRefreshCycle++
             val enabledDefs = sourceRegistry.getEnabledDefinitions()
                 .filter { it.source.id !in state.preferences.excludedSources }
 
@@ -935,6 +1107,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                         homeRowsBySource = emptyMap(),
                         homeQuickCategories = emptyList(),
                         featuredHomeItem = null,
+                        personalizedFreshItems = emptyList(),
                         isLoading = false
                     )
                 }
@@ -942,12 +1115,44 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 return@launch
             }
 
+            // On explicit refresh cycles after initial load, mark previously displayed Home items seen
+            if (cycle > 0 && !state.isPrivateSession && state.homeRowsBySource.isNotEmpty()) {
+                val prevShownIds = state.homeRowsBySource.values.flatten().map { it.compositeId }
+                val updatedTaste = tasteEngine.markShown(state.tasteProfile, prevShownIds)
+                _uiState.update {
+                    it.copy(
+                        tasteProfile = updatedTaste,
+                        topLabelCombos = tasteEngine.buildTopCombinations(updatedTaste)
+                    )
+                }
+                settingsStore.saveTasteProfile(updatedTaste)
+            }
+
+            val latestTaste = _uiState.value.tasteProfile
             val enabledIds = enabledDefs.map { it.source.id }.toSet()
+            val watchedIds = if (!state.isPrivateSession && state.activeProfile.historyEnabled) {
+                withContext(Dispatchers.IO) {
+                    catalogRepository.getWatchHistory(
+                        profileId = state.activeProfile.id,
+                        preferences = state.preferences
+                    ).mapTo(HashSet()) { it.item.compositeId }
+                }
+            } else {
+                emptySet()
+            }
 
             // Instant cold-start hydration from Room cache (<200ms) before live fetches finish
             val cachedRows = withContext(Dispatchers.IO) {
                 catalogRepository.getCachedHomeRows(enabledIds.toList(), state.preferences)
-                    .mapValues { (_, items) -> items.take(12) }
+                    .mapValues { (_, items) ->
+                        tasteEngine.rankFreshAndPersonalized(
+                            items = items,
+                            taste = latestTaste,
+                            watchedCompositeIds = watchedIds,
+                            avoidRepeats = state.preferences.avoidRepeatsEnabled,
+                            excludeWatched = state.preferences.avoidRepeatsEnabled
+                        ).take(12)
+                    }
                     .filterValues { it.isNotEmpty() }
             }
 
@@ -960,10 +1165,17 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 val initialFeatured = current.featuredHomeItem
                     ?.takeIf { it.sourceId in enabledIds }
                     ?: pickFeaturedItem(initialRows)
+                val initialFresh = buildPersonalizedFreshPicks(
+                    rowsBySource = initialRows,
+                    taste = current.tasteProfile,
+                    watchedIds = watchedIds,
+                    avoidRepeats = current.preferences.avoidRepeatsEnabled
+                )
                 current.copy(
                     homeRowsBySource = initialRows,
                     homeQuickCategories = current.homeQuickCategories.filter { it.sourceId in enabledIds },
                     featuredHomeItem = initialFeatured,
+                    personalizedFreshItems = initialFresh,
                     isLoading = initialRows.isEmpty(),
                     errorMessage = null
                 )
@@ -972,13 +1184,28 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
             coroutineScope {
                 for (def in enabledDefs) {
                     launch perSource@{
-                        val result = loadSingleSourceForHome(def, state.activeProfile, state.preferences)
+                        val result = loadSingleSourceForHome(
+                            def = def,
+                            profile = state.activeProfile,
+                            preferences = state.preferences,
+                            tasteProfile = _uiState.value.tasteProfile,
+                            refreshCycle = cycle
+                        )
                         if (!isActive) return@perSource
                         homeMergeMutex.withLock {
                             _uiState.update { current ->
                                 val mergedRows = current.homeRowsBySource.toMutableMap()
                                 if (result.items.isNotEmpty()) {
-                                    mergedRows[result.sourceId] = result.items.take(12)
+                                    val rankedItems = tasteEngine.rankFreshAndPersonalized(
+                                        items = result.items,
+                                        taste = current.tasteProfile,
+                                        watchedCompositeIds = watchedIds,
+                                        avoidRepeats = current.preferences.avoidRepeatsEnabled,
+                                        excludeWatched = current.preferences.avoidRepeatsEnabled
+                                    ).take(12)
+                                    if (rankedItems.isNotEmpty()) {
+                                        mergedRows[result.sourceId] = rankedItems
+                                    }
                                 }
                                 val mergedCats = (current.homeQuickCategories + result.categories)
                                     .distinctBy { c -> "${c.sourceId}::${c.id}" }
@@ -989,11 +1216,18 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                                 } else {
                                     current.featuredHomeItem
                                 }
+                                val freshPicks = buildPersonalizedFreshPicks(
+                                    rowsBySource = mergedRows,
+                                    taste = current.tasteProfile,
+                                    watchedIds = watchedIds,
+                                    avoidRepeats = current.preferences.avoidRepeatsEnabled
+                                )
                                 val stillLoading = current.isLoading && mergedRows.isEmpty()
                                 current.copy(
                                     homeRowsBySource = mergedRows,
                                     homeQuickCategories = mergedCats,
                                     featuredHomeItem = nextFeatured,
+                                    personalizedFreshItems = freshPicks,
                                     isLoading = stillLoading
                                 )
                             }
@@ -1012,7 +1246,9 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
     private suspend fun loadSingleSourceForHome(
         def: SourceDefinition,
         profile: UserProfile,
-        preferences: PreferenceConfig
+        preferences: PreferenceConfig,
+        tasteProfile: UserTasteProfile,
+        refreshCycle: Int
     ): SourceHomeLoadResult = withContext(Dispatchers.IO) {
         val sourceId = def.source.id
         val loaded = withTimeoutOrNull(15_000L) {
@@ -1025,10 +1261,11 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 var listingItems = if (cats.isNotEmpty() && def.operations.listing != null) {
+                    val chosenCat = selectRotatedCategoryForHome(cats, tasteProfile, refreshCycle)
                     runCatching {
                         catalogRepository.loadListingPage(
                             sourceId = sourceId,
-                            pageUrl = cats.first().url,
+                            pageUrl = chosenCat.url,
                             profile = profile,
                             preferences = preferences,
                             session = CatalogRepository.PaginationSession(sourceId)
@@ -1208,8 +1445,15 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun sortCatalogItems(items: List<CatalogItem>, mode: CatalogSortMode): List<CatalogItem> {
+        val state = _uiState.value
         return when (mode) {
-            CatalogSortMode.DEFAULT -> items
+            CatalogSortMode.DEFAULT -> tasteEngine.rankFreshAndPersonalized(
+                items = items,
+                taste = state.tasteProfile,
+                watchedCompositeIds = currentWatchedCompositeIds(),
+                avoidRepeats = state.preferences.avoidRepeatsEnabled,
+                excludeWatched = false
+            )
             CatalogSortMode.QUALITY_FIRST -> items.sortedWith(
                 compareByDescending<CatalogItem> { it.maxResolutionHeight ?: 0 }
                     .thenByDescending { it.durationSeconds ?: 0 }
@@ -1242,6 +1486,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectCategory(category: CategoryItem) {
+        recordLabelTaste(listOf(category.title), weight = 2.0)
         viewModelScope.launch {
             val session = CatalogRepository.PaginationSession(category.sourceId)
             activePaginationSession = session
@@ -1351,13 +1596,17 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(searchSourceFilterId = sourceId) }
     }
 
-    fun executeSearch(queryOverride: String? = null) {
+    fun executeSearch(queryOverride: String? = null, recordTaste: Boolean = true) {
         val q = (queryOverride ?: _uiState.value.searchQuery).trim()
         _uiState.update { it.copy(searchQuery = q) }
         if (q.isEmpty()) {
             rawSearchResults = emptyList()
             _uiState.update { it.copy(searchResults = emptyList(), searchErrors = emptyMap()) }
             return
+        }
+        if (recordTaste) {
+            val tokens = q.split(Regex("""\s+""")).filter { it.isNotBlank() }
+            recordLabelTaste(tokens, weight = 2.5)
         }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, searchErrors = emptyMap()) }
@@ -1398,6 +1647,9 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
     fun toggleFavorite(item: CatalogItem) {
         viewModelScope.launch {
             val isFav = catalogRepository.toggleFavorite(_uiState.value.activeProfile.id, item)
+            if (isFav) {
+                recordItemTaste(item, weight = 5.0)
+            }
             if (_uiState.value.selectedVideo?.compositeId == item.compositeId) {
                 _uiState.update { it.copy(selectedVideoIsFavorite = isFav) }
             }
@@ -1406,6 +1658,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun openVideoDetails(item: CatalogItem) {
+        recordItemTaste(item, weight = 1.0)
         viewModelScope.launch {
             val state = _uiState.value
             val enabledIds = sourceRegistry.getEnabledSourceIds()
@@ -1564,6 +1817,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             upNextPreloadJob?.cancel()
+            recordItemTaste(item, weight = 3.0)
             if (!preserveQueue) {
                 val (queue, idx) = buildQueueForItem(item, state)
                 activePlaybackQueue = queue
@@ -1633,6 +1887,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     isPrivateSession = state.isPrivateSession,
                     allowLan = state.activeProfile.allowLanSources && def.network.allowLan,
                     initialPositionMs = resumePos,
+                    minResolutionHeight = state.preferences.minResolutionHeight,
                     onResolveExpired = { prevRes, attempt ->
                         val curState = _uiState.value
                         val curDef = sourceRegistry.getEnabledDefinition(item.sourceId) ?: def

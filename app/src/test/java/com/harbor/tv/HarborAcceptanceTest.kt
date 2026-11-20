@@ -12,6 +12,7 @@ import com.harbor.tv.core.model.QualityPreference
 import com.harbor.tv.core.model.TagPreferenceState
 import com.harbor.tv.core.model.UnknownMetadataMode
 import com.harbor.tv.core.model.UserProfile
+import com.harbor.tv.core.model.UserTasteProfile
 import com.harbor.tv.core.network.ControlledHttpTransport
 import com.harbor.tv.core.network.HttpResponseData
 import com.harbor.tv.core.network.HttpTransport
@@ -20,6 +21,7 @@ import com.harbor.tv.core.security.CredentialRedactor
 import com.harbor.tv.domain.catalog.CatalogNormalizer
 import com.harbor.tv.domain.playback.PlaybackResolver
 import com.harbor.tv.domain.preferences.PreferenceFilterEngine
+import com.harbor.tv.domain.preferences.UserTasteEngine
 import com.harbor.tv.domain.sources.MagicPhSettingsAdapter
 import com.harbor.tv.engine.definition.DefinitionImporter
 import com.harbor.tv.engine.definition.RequestDef
@@ -462,6 +464,182 @@ class HarborAcceptanceTest {
         // Artwork stripped on every rejected item (Section 16.4)
         assertEquals(2, partition.rejectedWithoutArtwork.size)
         assertTrue(partition.rejectedWithoutArtwork.all { it.thumbnailReferences.isEmpty() })
+    }
+
+    @Test
+    fun minResolutionRestriction_blocksLowResInCatalogAndPlayback(): Unit = runBlocking {
+        val heights = listOf(144, 240, 360, 480, 720, 1080, 2160)
+        val items = heights.map { h ->
+            CatalogItem(
+                sourceId = "example-library",
+                sourceItemId = "vid-$h",
+                sourcePageUrl = "https://video.example.org/watch/vid-$h",
+                title = "Sample ${h}p Video",
+                canonicalTags = listOf("topic.nature"),
+                thumbnailReferences = listOf("https://images.example.org/$h.jpg"),
+                metadataCompleteness = MetadataCompleteness.COMPLETE,
+                maxQualityLabel = if (h >= 2160) "4K" else "${h}p",
+                maxResolutionHeight = h
+            )
+        }
+
+        val restrictionPrefs = PreferenceConfig(minResolutionHeight = 480)
+        val partition = filterEngine.partitionAndStripRejectedArtwork(
+            items = items,
+            preferences = restrictionPrefs,
+            enabledSourceIds = setOf("example-library")
+        )
+
+        assertEquals(listOf(480, 720, 1080, 2160), partition.eligible.map { it.maxResolutionHeight })
+        assertEquals(setOf(144, 240, 360), partition.rejectedWithoutArtwork.map { it.maxResolutionHeight }.toSet())
+        assertTrue(partition.rejectedWithoutArtwork.all { it.thumbnailReferences.isEmpty() })
+
+        val definition = loadValidatedDefinition("definitions/example-library.yaml")
+        val targetItem = items.first { it.maxResolutionHeight == 720 }
+        val profile = UserProfile(id = "p1", name = "Default", qualityPreference = QualityPreference.HIGHEST_AVAILABLE)
+
+        val mixedTransport = object : HttpTransport {
+            override suspend fun executeGet(
+                url: String,
+                definition: SourceDefinition,
+                purpose: HostPurpose,
+                extraHeaders: Map<String, String>,
+                userAllowLan: Boolean
+            ): HttpResponseData {
+                val html = """
+                    <html><body>
+                      <video controls>
+                        <source src="https://media.example.org/streams/240p.mp4" type="video/mp4">
+                        <source src="https://media.example.org/streams/360p.mp4" type="video/mp4">
+                        <source src="https://media.example.org/streams/720p.mp4" type="video/mp4">
+                      </video>
+                    </body></html>
+                """.trimIndent()
+                return HttpResponseData(url, url, 200, emptyMap(), html)
+            }
+        }
+        val mixedResult = PlaybackResolver(mixedTransport, resolveMediaDns = false).resolvePlayback(
+            item = targetItem,
+            definition = definition,
+            profile = profile,
+            preferences = restrictionPrefs,
+            enabledSourceIds = setOf("example-library")
+        )
+        assertEquals(1, mixedResult.candidates.size)
+        assertEquals(720, mixedResult.selectedCandidate?.resolutionHeight)
+
+        val lowOnlyTransport = object : HttpTransport {
+            override suspend fun executeGet(
+                url: String,
+                definition: SourceDefinition,
+                purpose: HostPurpose,
+                extraHeaders: Map<String, String>,
+                userAllowLan: Boolean
+            ): HttpResponseData {
+                val html = """
+                    <html><body>
+                      <video controls>
+                        <source src="https://media.example.org/streams/240p.mp4" type="video/mp4">
+                        <source src="https://media.example.org/streams/360p.mp4" type="video/mp4">
+                      </video>
+                    </body></html>
+                """.trimIndent()
+                return HttpResponseData(url, url, 200, emptyMap(), html)
+            }
+        }
+        expectHarborException(HarborErrorCode.POLICY_BLOCKED) {
+            PlaybackResolver(lowOnlyTransport, resolveMediaDns = false).resolvePlayback(
+                item = targetItem,
+                definition = definition,
+                profile = profile,
+                preferences = restrictionPrefs,
+                enabledSourceIds = setOf("example-library")
+            )
+        }
+        Unit
+    }
+
+    @Test
+    fun userTasteEngine_tracksLabelStatsBuildsTopCombosAndAvoidsRepeats() {
+        val tasteEngine = UserTasteEngine()
+        var taste = UserTasteProfile(profileId = "taste-test")
+
+        val item4kAmateur1 = CatalogItem(
+            sourceId = "src1",
+            sourceItemId = "a1",
+            sourcePageUrl = "https://video.example.org/watch/a1",
+            title = "4K Amateur Session 1",
+            sourceTags = listOf("4K", "Amateur"),
+            maxResolutionHeight = 2160
+        )
+        val item4kAmateur2 = CatalogItem(
+            sourceId = "src1",
+            sourceItemId = "a2",
+            sourcePageUrl = "https://video.example.org/watch/a2",
+            title = "4K Amateur Session 2",
+            sourceTags = listOf("4K", "Amateur"),
+            maxResolutionHeight = 2160
+        )
+        val item1080Nature = CatalogItem(
+            sourceId = "src2",
+            sourceItemId = "n1",
+            sourcePageUrl = "https://video.example.org/watch/n1",
+            title = "1080p Nature Documentary",
+            sourceTags = listOf("1080p", "Nature"),
+            maxResolutionHeight = 1080
+        )
+
+        taste = tasteEngine.recordInteraction(taste, item4kAmateur1, weight = 3.0)
+        taste = tasteEngine.recordInteraction(taste, item4kAmateur2, weight = 3.0)
+        taste = tasteEngine.recordInteraction(taste, item1080Nature, weight = 1.0)
+
+        assertTrue((taste.labelScores["4k"] ?: 0.0) > (taste.labelScores["nature"] ?: 0.0))
+
+        val combos = tasteEngine.buildTopCombinations(taste)
+        assertTrue(combos.isNotEmpty())
+        val topCombo = combos.first()
+        assertEquals(setOf("4k", "amateur"), topCombo.labels.toSet())
+        assertTrue(topCombo.searchQuery.contains("4k", ignoreCase = true))
+        assertTrue(topCombo.searchQuery.contains("amateur", ignoreCase = true))
+
+        val watched = CatalogItem(
+            sourceId = "src1",
+            sourceItemId = "w1",
+            sourcePageUrl = "https://video.example.org/watch/w1",
+            title = "Already Watched 4K Amateur",
+            sourceTags = listOf("4K", "Amateur"),
+            maxResolutionHeight = 2160
+        )
+        val freshMatch = CatalogItem(
+            sourceId = "src1",
+            sourceItemId = "f1",
+            sourcePageUrl = "https://video.example.org/watch/f1",
+            title = "Fresh 4K Amateur Discovery",
+            sourceTags = listOf("4K", "Amateur"),
+            maxResolutionHeight = 2160
+        )
+        val freshNeutral = CatalogItem(
+            sourceId = "src2",
+            sourceItemId = "f2",
+            sourcePageUrl = "https://video.example.org/watch/f2",
+            title = "Fresh Neutral Discovery",
+            sourceTags = listOf("Documentary"),
+            maxResolutionHeight = 1080
+        )
+
+        val ranked = tasteEngine.rankFreshAndPersonalized(
+            items = listOf(watched, item4kAmateur1, freshNeutral, freshMatch),
+            taste = taste,
+            watchedCompositeIds = setOf(watched.compositeId),
+            avoidRepeats = true,
+            excludeWatched = true
+        )
+
+        assertFalse(ranked.any { it.compositeId == watched.compositeId })
+        assertEquals(
+            listOf(freshMatch.compositeId, freshNeutral.compositeId, item4kAmateur1.compositeId),
+            ranked.map { it.compositeId }
+        )
     }
 
     // -------------------------------------------------------------------------

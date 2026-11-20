@@ -36,9 +36,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import com.harbor.tv.core.model.LabelComboSuggestion
 import com.harbor.tv.core.model.QualityPreference
 import com.harbor.tv.core.model.UnknownMetadataMode
 import com.harbor.tv.core.model.UserProfile
+import com.harbor.tv.core.model.UserTasteProfile
 import com.harbor.tv.core.tvui.HarborColors
 import com.harbor.tv.core.tvui.TvActionButton
 import com.harbor.tv.core.tvui.TvButtonTone
@@ -55,6 +57,10 @@ fun SettingsScreen(
     videoPreloadEnabled: Boolean = true,
     autoPlayNextEnabled: Boolean = true,
     focusPreviewEnabled: Boolean = true,
+    minResolutionHeight: Int = 0,
+    avoidRepeatsEnabled: Boolean = true,
+    tasteProfile: UserTasteProfile = UserTasteProfile(),
+    topLabelCombos: List<LabelComboSuggestion> = emptyList(),
     mediaCacheLimitMb: Int = 1536,
     mediaCacheUsedBytes: Long = 0L,
     mediaCacheMaxBytes: Long = 1536L * 1024L * 1024L,
@@ -64,6 +70,9 @@ fun SettingsScreen(
     onTogglePrivateSession: (Boolean) -> Unit,
     onSetUnknownMetadataMode: (UnknownMetadataMode) -> Unit,
     onSetQualityPreference: (QualityPreference, Int, Int) -> Unit,
+    onSetMinResolutionHeight: (Int) -> Unit = {},
+    onToggleAvoidRepeats: (Boolean) -> Unit = {},
+    onResetTasteStats: () -> Unit = {},
     onToggleAllowLan: (Boolean) -> Unit,
     onToggleHistoryEnabled: (Boolean) -> Unit,
     onToggleOfflineFixtureMode: (Boolean) -> Unit,
@@ -193,6 +202,29 @@ fun SettingsScreen(
                         accent = HarborColors.Gold4K,
                         onClick = { onToggleAutoPlayNext(!autoPlayNextEnabled) }
                     )
+                    Text(
+                        text = "Minimum Quality Restriction",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = HarborColors.TextPrimary
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        listOf(
+                            0 to "No Limit",
+                            480 to "No 144p/240p/360p (480p+)",
+                            720 to "No SD (720p+)",
+                            1080 to "1080p+ Only",
+                            2160 to "4K Only (2160p)"
+                        ).forEach { (minHeight, label) ->
+                            TvTagChip(
+                                label = label,
+                                selected = minResolutionHeight == minHeight,
+                                onClick = { onSetMinResolutionHeight(minHeight) }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -323,6 +355,60 @@ fun SettingsScreen(
                             )
                         }
                     )
+
+                    SettingsToggleRow(
+                        title = "Prioritize Fresh / Unseen Movies",
+                        subtitle = "Rotates categories and pushes previously watched or seen videos down.",
+                        valueLabel = if (avoidRepeatsEnabled) "ON" else "OFF",
+                        isEnabled = avoidRepeatsEnabled,
+                        accent = HarborColors.AccentTeal,
+                        onClick = { onToggleAvoidRepeats(!avoidRepeatsEnabled) }
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(HarborColors.SurfaceElevated)
+                            .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(12.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Local Taste Statistics",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = HarborColors.FocusCyan
+                        )
+                        Text(
+                            text = "Tracked picks: ${tasteProfile.totalInteractions} • Seen history window: ${tasteProfile.seenItemIds.size}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = HarborColors.TextSecondary
+                        )
+                        val topLabelsText = tasteProfile.labelScores.entries
+                            .sortedByDescending { it.value }
+                            .take(5)
+                            .joinToString(", ") { it.key }
+                            .ifEmpty { "None yet" }
+                        Text(
+                            text = "Top labels: $topLabelsText",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = HarborColors.TextSecondary
+                        )
+                        val topCombosText = topLabelCombos
+                            .take(3)
+                            .joinToString(" • ") { it.displayTitle }
+                            .ifEmpty { "Watch or favorite a few videos to unlock combos" }
+                        Text(
+                            text = "Top combos: $topCombosText",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = HarborColors.TextSecondary
+                        )
+                        TvActionButton(
+                            label = "Reset Taste Stats",
+                            tone = TvButtonTone.DANGER,
+                            onClick = onResetTasteStats
+                        )
+                    }
 
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),

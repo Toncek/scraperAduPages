@@ -41,6 +41,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.harbor.tv.core.model.CatalogItem
 import com.harbor.tv.core.model.CatalogSortMode
+import com.harbor.tv.core.model.LabelComboSuggestion
 import com.harbor.tv.core.tvui.HarborColors
 import com.harbor.tv.core.tvui.TvActionButton
 import com.harbor.tv.core.tvui.TvButtonTone
@@ -58,12 +59,14 @@ fun SearchScreen(
     only4kFilter: Boolean = false,
     sortMode: CatalogSortMode = CatalogSortMode.DEFAULT,
     previewEnabled: Boolean = true,
+    topLabelCombos: List<LabelComboSuggestion> = emptyList(),
     sourceErrors: Map<String, String>,
     isLoading: Boolean,
     lastFocusedKey: String?,
     onFocusKeyChanged: (String) -> Unit,
     onToggleOnly4kFilter: () -> Unit = {},
     onSelectSortMode: (CatalogSortMode) -> Unit = {},
+    onApplyLabelCombo: (LabelComboSuggestion) -> Unit = {},
     onQueryChange: (String) -> Unit,
     onSelectSourceFilter: (String?) -> Unit,
     onSearch: (String?) -> Unit,
@@ -206,6 +209,19 @@ fun SearchScreen(
                                 else -> onQueryChange(query + k.lowercase())
                             }
                         }
+                    )
+                }
+            }
+        }
+
+        // Personalized label combinations
+        if (topLabelCombos.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(topLabelCombos, key = { "search_combo_${it.searchQuery}" }) { combo ->
+                    TvTagChip(
+                        label = combo.displayTitle,
+                        selected = query.equals(combo.searchQuery, ignoreCase = true),
+                        onClick = { onApplyLabelCombo(combo) }
                     )
                 }
             }

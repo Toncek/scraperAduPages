@@ -277,11 +277,18 @@ class HarborPlayerController(
         isPrivateSession: Boolean,
         allowLan: Boolean,
         initialPositionMs: Long = 0L,
+        minResolutionHeight: Int = 0,
         onResolveExpired: suspend (PlaybackResolutionResult, Int) -> PlaybackResolutionResult,
         onSaveProgress: (Long) -> Unit,
         onQuarterProgressReached: (() -> Unit)? = null
     ) {
         cancelPreload()
+        val clampedMinHeight = minResolutionHeight.coerceAtLeast(0)
+        trackSelector.parameters = trackSelector.parameters
+            .buildUpon()
+            .setMinVideoSize(0, clampedMinHeight)
+            .setMaxVideoSize(3840, 2160)
+            .build()
         currentResolution = resolution
         currentAllowLan = allowLan
         onResolveExpiredCallback = onResolveExpired

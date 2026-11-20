@@ -11,6 +11,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.harbor.tv.core.model.PreferenceConfig
 import com.harbor.tv.core.model.TagPreferenceState
 import com.harbor.tv.core.model.UnknownMetadataMode
+import com.harbor.tv.core.model.UserTasteProfile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -22,6 +23,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -57,6 +59,10 @@ class HarborSettingsStore(
 
         private fun preferenceConfigKey(profileId: String): Preferences.Key<String> {
             return stringPreferencesKey("profile_preferences_${profileId.trim()}")
+        }
+
+        private fun tasteProfileKey(profileId: String): Preferences.Key<String> {
+            return stringPreferencesKey("profile_taste_${profileId.trim()}")
         }
     }
 
@@ -177,6 +183,37 @@ class HarborSettingsStore(
             prefs.remove(key)
         }
     }
+
+    fun observeTasteProfile(profileId: String): Flow<UserTasteProfile> {
+        val key = tasteProfileKey(profileId)
+        return dataStore.data.map { prefs ->
+            val raw = prefs[key]
+            if (raw.isNullOrBlank()) {
+                UserTasteProfile(profileId = profileId)
+            } else {
+                UserTasteProfileJsonCodec.decode(raw, fallbackProfileId = profileId)
+            }
+        }
+    }
+
+    suspend fun getTasteProfile(profileId: String): UserTasteProfile {
+        return observeTasteProfile(profileId).first()
+    }
+
+    suspend fun saveTasteProfile(profile: UserTasteProfile) {
+        val key = tasteProfileKey(profile.profileId)
+        val serialized = UserTasteProfileJsonCodec.encode(profile)
+        dataStore.edit { prefs ->
+            prefs[key] = serialized
+        }
+    }
+
+    suspend fun resetTasteProfile(profileId: String) {
+        val key = tasteProfileKey(profileId)
+        dataStore.edit { prefs ->
+            prefs.remove(key)
+        }
+    }
 }
 
 object PreferenceConfigJsonCodec {
@@ -211,6 +248,8 @@ object PreferenceConfigJsonCodec {
             put("requiredCanonicalTagPrefixes", buildJsonArray {
                 config.requiredCanonicalTagPrefixes.forEach { add(JsonPrimitive(it)) }
             })
+            put("minResolutionHeight", config.minResolutionHeight)
+            put("avoidRepeatsEnabled", config.avoidRepeatsEnabled)
         }
         return obj.toString()
     }
@@ -243,7 +282,9 @@ object PreferenceConfigJsonCodec {
                 includeLive = obj["includeLive"]?.jsonPrimitive?.booleanOrNull ?: true,
                 includeOnDemand = obj["includeOnDemand"]?.jsonPrimitive?.booleanOrNull ?: true,
                 unknownMetadataMode = mode,
-                requiredCanonicalTagPrefixes = decodeStringSet(obj["requiredCanonicalTagPrefixes"] as? JsonArray)
+                requiredCanonicalTagPrefixes = decodeStringSet(obj["requiredCanonicalTagPrefixes"] as? JsonArray),
+                minResolutionHeight = obj["minResolutionHeight"]?.jsonPrimitive?.intOrNull ?: 0,
+                avoidRepeatsEnabled = obj["avoidRepeatsEnabled"]?.jsonPrimitive?.booleanOrNull ?: true
             )
         }.getOrElse {
             PreferenceConfig(profileId = fallbackProfileId)
@@ -252,5 +293,71 @@ object PreferenceConfigJsonCodec {
 
     private fun decodeStringSet(array: JsonArray?): Set<String> {
         return array?.mapNotNull { it.jsonPrimitive.contentOrNull }?.toSet().orEmpty()
+    }
+}
+
+object UserTasteProfileJsonCodec {
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = false
+    }
+
+    fun encode(profile: UserTasteProfile): String {
+        val obj = buildJsonObject {
+            put("profileId", profile.profileId)
+            put("labelScores", encodeDoubleMap(profile.labelScores))
+            put("pairScores", encodeDoubleMap(profile.pairScores))
+            put("sourceScores", encodeDoubleMap(profile.sourceScores))
+            put("seenItemIds", buildJsonArray {
+                profile.seenItemIds.forEach { add(JsonPrimitive(it)) }
+            })
+            put("totalInteractions", profile.totalInteractions)
+        }
+        return obj.toString()
+    }
+
+    fun decode(rawJson: String, fallbackProfileId: String = HarborSettingsStore.DEFAULT_PROFILE_ID): UserTasteProfile {
+        return runCatching {
+            val obj = json.parseToJsonElement(rawJson).jsonObject
+            val profileId = obj["profileId"]?.jsonPrimitive?.contentOrNull
+                ?.takeIf { it.isNotBlank() } ?: fallbackProfileId
+
+            UserTasteProfile(
+                profileId = profileId,
+                labelScores = decodeDoubleMap(obj["labelScores"] as? JsonObject),
+                pairScores = decodeDoubleMap(obj["pairScores"] as? JsonObject),
+                sourceScores = decodeDoubleMap(obj["sourceScores"] as? JsonObject),
+                seenItemIds = decodeStringList(obj["seenItemIds"] as? JsonArray),
+                totalInteractions = (obj["totalInteractions"]?.jsonPrimitive?.intOrNull ?: 0).coerceAtLeast(0)
+            )
+        }.getOrElse {
+            UserTasteProfile(profileId = fallbackProfileId)
+        }
+    }
+
+    private fun encodeDoubleMap(map: Map<String, Double>): JsonObject {
+        return buildJsonObject {
+            map.forEach { (k, v) ->
+                if (v.isFinite()) {
+                    put(k, v)
+                }
+            }
+        }
+    }
+
+    private fun decodeDoubleMap(obj: JsonObject?): Map<String, Double> {
+        if (obj == null) return emptyMap()
+        val out = linkedMapOf<String, Double>()
+        obj.forEach { (k, v) ->
+            val score = v.jsonPrimitive.doubleOrNull
+            if (score != null && score.isFinite()) {
+                out[k] = score
+            }
+        }
+        return out
+    }
+
+    private fun decodeStringList(array: JsonArray?): List<String> {
+        return array?.mapNotNull { it.jsonPrimitive.contentOrNull }?.toList().orEmpty()
     }
 }

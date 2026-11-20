@@ -108,6 +108,7 @@ class PlaybackResolver(
         val allowedTypes = parseAllowedStreamTypes(policy.allowedTypes)
         val validatedCandidates = mutableListOf<PlaybackCandidate>()
         var lastPolicyError: HarborException? = null
+        var resolutionRestrictionError: HarborException? = null
         var hasFormatUnsupported = false
 
         for (rawCandidate in executionResult.candidates) {
@@ -145,6 +146,19 @@ class PlaybackResolver(
             val inferredHeight = rawCandidate.resolutionHeight
                 ?: inferResolutionHeight(rawCandidate.qualityLabel, normalizedUrl)
 
+            if (preferences.minResolutionHeight > 0 &&
+                inferredHeight != null &&
+                inferredHeight < preferences.minResolutionHeight
+            ) {
+                resolutionRestrictionError = HarborException(
+                    HarborErrorCode.POLICY_BLOCKED,
+                    "All available streams are below your minimum resolution restriction (${preferences.minResolutionHeight}p+)",
+                    sourceId = definition.source.id,
+                    operation = "playback"
+                )
+                continue
+            }
+
             validatedCandidates.add(
                 rawCandidate.copy(
                     url = normalizedUrl,
@@ -156,6 +170,9 @@ class PlaybackResolver(
         }
 
         if (validatedCandidates.isEmpty()) {
+            if (resolutionRestrictionError != null && lastPolicyError == null) {
+                throw resolutionRestrictionError
+            }
             if (lastPolicyError != null && !hasFormatUnsupported) {
                 throw lastPolicyError
             }

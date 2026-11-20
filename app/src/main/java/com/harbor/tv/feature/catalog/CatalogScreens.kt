@@ -46,6 +46,7 @@ import coil.size.Size
 import com.harbor.tv.core.model.CatalogItem
 import com.harbor.tv.core.model.CatalogSortMode
 import com.harbor.tv.core.model.CategoryItem
+import com.harbor.tv.core.model.LabelComboSuggestion
 import com.harbor.tv.core.model.LiveStatus
 import com.harbor.tv.core.model.UserProfile
 import com.harbor.tv.core.tvui.HarborColors
@@ -80,6 +81,8 @@ fun HomeScreen(
     only4kFilter: Boolean = false,
     previewEnabled: Boolean = true,
     watchHistory: List<CatalogRepository.WatchHistoryRecord>,
+    topLabelCombos: List<LabelComboSuggestion> = emptyList(),
+    personalizedFreshItems: List<CatalogItem> = emptyList(),
     isLoading: Boolean,
     errorMessage: String?,
     lastFocusedKey: String?,
@@ -87,6 +90,7 @@ fun HomeScreen(
     onFeaturedItemFocused: (CatalogItem) -> Unit = {},
     onToggleOnly4kFilter: () -> Unit = {},
     onQuickBrowse4k: () -> Unit = {},
+    onApplyLabelCombo: (LabelComboSuggestion) -> Unit = {},
     onOpenVideo: (CatalogItem) -> Unit,
     onPlayVideo: (CatalogItem) -> Unit = onOpenVideo,
     onOpenSourceCategories: (String) -> Unit = {},
@@ -292,6 +296,61 @@ fun HomeScreen(
                             label = friendlySourceName(srcId),
                             onClick = { onOpenSourceCategories(srcId) }
                         )
+                    }
+                }
+            }
+        }
+
+        if (!isPrivateSession && topLabelCombos.isNotEmpty()) {
+            item(key = "for_you_combos") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "For You • Top Label Combos",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = HarborColors.FocusCyan,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(topLabelCombos, key = { "combo_${it.searchQuery}" }) { combo ->
+                            TvTagChip(
+                                label = combo.displayTitle,
+                                onClick = { onApplyLabelCombo(combo) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        val freshRowItems = if (only4kFilter) {
+            personalizedFreshItems.filter(::is4kCatalogItem)
+        } else {
+            personalizedFreshItems
+        }
+        if (freshRowItems.isNotEmpty()) {
+            item(key = "row_picked_for_you_fresh") {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Picked For You • Fresh",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = HarborColors.FocusCyan,
+                        fontWeight = FontWeight.Bold
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        items(freshRowItems, key = { "fresh_${it.compositeId}" }) { item ->
+                            val key = "fresh:${item.compositeId}"
+                            TvVideoCard(
+                                item = item,
+                                focusRequester = requesterFor(key),
+                                onFocused = {
+                                    onFocusKeyChanged(key)
+                                    onFeaturedItemFocused(item)
+                                },
+                                showSourceBadge = true,
+                                previewEnabled = previewEnabled,
+                                onClick = { onOpenVideo(item) }
+                            )
+                        }
                     }
                 }
             }
