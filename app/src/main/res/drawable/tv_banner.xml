@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- Deep slate TV background -->
+    <path
+        android:fillColor="#0B0F19"
+        android:pathData="M0,0h320v180h-320z" />
+
+    <!-- Subtle horizon band -->
+    <path
+        android:fillColor="#111827"
+        android:pathData="M0,118h320v62h-320z" />
+
+    <!-- Cyan accent rule -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M32,116h256v2h-256z" />
+
+    <!-- Neutral geometric beacon / play shield -->
+    <path
+        android:fillColor="#1E293B"
+        android:strokeWidth="2.5"
+        android:strokeColor="#38BDF8"
+        android:pathData="M78,44h44a8,8 0 0,1 8,8v44a8,8 0 0,1 -8,8h-44a8,8 0 0,1 -8,-8v-44a8,8 0 0,1 8,-8z" />
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M93,58l22,16l-22,16z" />
+
+    <!-- Geometric 'H' monogram -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M150,52h9v20h20v-20h9v48h-9v-20h-20v20h-9z" />
+
+    <!-- Wave / harbor underline motif -->
+    <path
+        android:fillColor="#2DD4BF"
+        android:pathData="M150,136c18,-8 36,8 54,0c18,-8 36,8 54,0v6c-18,8 -36,-8 -54,0c-18,8 -36,-8 -54,0z" />
+</vector>

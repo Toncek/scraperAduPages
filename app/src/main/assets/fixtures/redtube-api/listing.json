@@ -1,0 +1,27 @@
+{
+  "count": 2,
+  "videos": [
+    {
+      "video": {
+        "video_id": "100001",
+        "title": "Sanitized RedTube Query API Demo 1",
+        "duration": "04:15",
+        "url": "https://www.redtube.com/100001",
+        "embed_url": "https://embed.redtube.com/?id=100001",
+        "default_thumb": "https://www.redtube.com/thumbs/demo/100001.jpg",
+        "tags": ["Amateur", "HD"]
+      }
+    },
+    {
+      "video": {
+        "video_id": "100002",
+        "title": "Sanitized RedTube Query API Demo 2",
+        "duration": "06:30",
+        "url": "https://www.redtube.com/100002",
+        "embed_url": "https://embed.redtube.com/?id=100002",
+        "default_thumb": "https://www.redtube.com/thumbs/demo/100002.jpg",
+        "tags": ["HD"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,270 @@
+schemaVersion: "1.0"
+
+source:
+  id: "embedded-json-catalog"
+  name: "Embedded JSON Catalog Demo"
+  version: "1.0.0"
+  description: "Level 3 embedded JSON script extraction (parses script#catalog-data as JSON without JavaScript execution)."
+  author: "Harbor Reference"
+  language: "en"
+  baseUrl: "https://catalog.example.org"
+  enabledByDefault: false
+
+  permission:
+    basis: "test-fixture"
+    reference: "Harbor Level 3 offline specification fixture"
+
+  capabilities:
+    categories: true
+    search: true
+    details: true
+    playback: true
+    live: false
+    intermediateTraversal: false
+
+network:
+  httpsOnly: true
+  lanAccess: false
+
+  allowedHosts:
+    catalog:
+      - "catalog.example.org"
+    images:
+      - "images.example.org"
+    media:
+      - "media.example.org"
+
+  redirects:
+    maxHops: 3
+
+  timeouts:
+    connectMs: 10000
+    readMs: 15000
+    operationMs: 30000
+
+  limits:
+    maxConcurrentRequests: 2
+    minRequestIntervalMs: 500
+    maxCatalogResponseBytes: 2097152
+    maxItemsPerPage: 100
+
+  headers:
+    Accept: "text/html"
+
+authentication:
+  type: "none"
+
+taxonomy:
+  namespace: "embedded-json-catalog"
+  mappings:
+    "Science":
+      - "topic.science"
+    "Astronomy":
+      - "topic.astronomy"
+
+operations:
+  categories:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/categories"
+    response:
+      type: "html"
+    document:
+      embeddedJson:
+        selector: "script#catalog-data"
+        read: "data"
+    extract:
+      items:
+        pointer: "/categories"
+        limit: 100
+        fields:
+          id:
+            pointer: "/id"
+            required: true
+          title:
+            pointer: "/title"
+            transforms:
+              - op: "trim"
+            required: true
+          url:
+            pointer: "/url"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+
+  listing:
+    request:
+      method: "GET"
+      url: "${input.url}"
+    response:
+      type: "html"
+    document:
+      embeddedJson:
+        selector: "script#catalog-data"
+        read: "data"
+    extract:
+      items:
+        pointer: "/videos"
+        limit: 100
+        fields:
+          id:
+            pointer: "/id"
+            required: true
+          title:
+            pointer: "/title"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          detailUrl:
+            pointer: "/detailUrl"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+          thumbnailUrl:
+            pointer: "/thumbnailUrl"
+            transforms:
+              - op: "resolveUrl"
+            required: false
+          durationSeconds:
+            pointer: "/duration"
+            transforms:
+              - op: "parseDuration"
+            required: false
+          sourceTags:
+            pointer: "/tags"
+            cardinality: "many"
+            transforms:
+              - op: "trim"
+            required: false
+    pagination:
+      mode: "jsonCursor"
+      cursorPointer: "/pagination/nextUrl"
+      maxPages: 10
+
+  search:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/search"
+      query:
+        q: "${input.query}"
+    response:
+      type: "html"
+    document:
+      embeddedJson:
+        selector: "script#catalog-data"
+        read: "data"
+    reuse:
+      extractFrom: "listing"
+      paginationFrom: "listing"
+
+  details:
+    request:
+      method: "GET"
+      url: "${input.detailUrl}"
+    response:
+      type: "html"
+    document:
+      embeddedJson:
+        selector: "script#catalog-data"
+        read: "data"
+    extract:
+      fields:
+        title:
+          pointer: "/video/title"
+          transforms:
+            - op: "trim"
+          required: true
+        description:
+          pointer: "/video/description"
+          transforms:
+            - op: "trim"
+          required: false
+        sourceTags:
+          pointer: "/video/tags"
+          cardinality: "many"
+          transforms:
+            - op: "trim"
+          required: false
+
+  playback:
+    steps:
+      - id: "detailPage"
+        request:
+          method: "GET"
+          url: "${input.detailUrl}"
+        response:
+          type: "html"
+        document:
+          embeddedJson:
+            selector: "script#catalog-data"
+            read: "data"
+        extract:
+          candidates:
+            pointer: "/video/streams"
+            limit: 20
+            fields:
+              url:
+                pointer: "/url"
+                transforms:
+                  - op: "resolveUrl"
+                required: true
+              mimeType:
+                pointer: "/mimeType"
+                required: false
+              quality:
+                pointer: "/quality"
+                required: false
+    result:
+      candidatesFrom: "detailPage.candidates"
+
+playback:
+  allowedTypes:
+    - "hls"
+    - "dash"
+    - "progressive"
+  preserveMediaQueryParameters: true
+  preferredQuality: "highest"
+  onExpired:
+    action: "resolveAgain"
+    maxAttempts: 1
+
+fixtures:
+  - id: "categories-basic"
+    operation: "categories"
+    responseFile: "fixtures/embedded-json-catalog/categories.html"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "url"
+
+  - id: "listing-basic"
+    operation: "listing"
+    responseFile: "fixtures/embedded-json-catalog/listing.html"
+    input:
+      url: "https://catalog.example.org/categories/science"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "detailUrl"
+
+  - id: "details-basic"
+    operation: "details"
+    responseFile: "fixtures/embedded-json-catalog/details.html"
+    input:
+      detailUrl: "https://catalog.example.org/watch/orbital-mechanics"
+    expected:
+      requiredFields:
+        - "title"
+
+  - id: "playback-basic"
+    operation: "playback"
+    responseFile: "fixtures/embedded-json-catalog/details.html"
+    input:
+      detailUrl: "https://catalog.example.org/watch/orbital-mechanics"
+    expected:
+      minimumCandidates: 2

@@ -1,0 +1,274 @@
+schemaVersion: "1.0"
+
+source:
+  id: "intermediate-embed-demo"
+  name: "Intermediate Embed Traversal Demo"
+  version: "1.0.0"
+  description: "Level 4 approved 2-step intermediate page playback traversal (detail page -> declared embed host -> media stream candidates)."
+  author: "Harbor Reference"
+  language: "en"
+  baseUrl: "https://portal.example.org"
+  enabledByDefault: false
+
+  permission:
+    basis: "test-fixture"
+    reference: "Harbor Level 4 offline specification fixture"
+
+  capabilities:
+    categories: true
+    search: false
+    details: true
+    playback: true
+    live: false
+    intermediateTraversal: true
+
+network:
+  httpsOnly: true
+  lanAccess: false
+
+  allowedHosts:
+    catalog:
+      - "portal.example.org"
+      - "embed.example.org"
+    images:
+      - "images.example.org"
+    media:
+      - "media.example.org"
+
+  redirects:
+    maxHops: 2
+
+  timeouts:
+    connectMs: 10000
+    readMs: 15000
+    operationMs: 30000
+
+  limits:
+    maxConcurrentRequests: 2
+    minRequestIntervalMs: 500
+    maxCatalogResponseBytes: 2097152
+    maxItemsPerPage: 100
+
+  headers:
+    Accept: "text/html"
+
+authentication:
+  type: "none"
+
+taxonomy:
+  namespace: "intermediate-embed-demo"
+  mappings:
+    "Oceanography":
+      - "topic.oceanography"
+
+operations:
+  categories:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/categories"
+    response:
+      type: "html"
+    extract:
+      items:
+        selector: "ul.category-list a.cat-link"
+        limit: 100
+        fields:
+          id:
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+              - op: "canonicalUrl"
+            required: true
+          title:
+            read: "text"
+            transforms:
+              - op: "trim"
+            required: true
+          url:
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+
+  listing:
+    request:
+      method: "GET"
+      url: "${input.url}"
+    response:
+      type: "html"
+    extract:
+      items:
+        selector: "div.catalog-grid div.video-tile"
+        limit: 100
+        fields:
+          id:
+            selector: "a.tile-link"
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+              - op: "canonicalUrl"
+            required: true
+          title:
+            selector: "h3.tile-title"
+            read: "text"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          detailUrl:
+            selector: "a.tile-link"
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+          thumbnailUrl:
+            selector: "img.tile-thumb"
+            read: "attribute"
+            attribute: "src"
+            transforms:
+              - op: "resolveUrl"
+            required: false
+          durationSeconds:
+            selector: "span.tile-duration"
+            read: "text"
+            transforms:
+              - op: "trim"
+              - op: "parseDuration"
+            required: false
+    pagination:
+      mode: "nextLink"
+      next:
+        selector: "a.pagination-next"
+        read: "attribute"
+        attribute: "href"
+        transforms:
+          - op: "resolveUrl"
+
+  details:
+    request:
+      method: "GET"
+      url: "${input.detailUrl}"
+    response:
+      type: "html"
+    extract:
+      fields:
+        title:
+          selector: "h1.video-heading"
+          read: "text"
+          transforms:
+            - op: "trim"
+          required: true
+        description:
+          selector: "p.video-summary"
+          read: "text"
+          transforms:
+            - op: "trim"
+          required: false
+        sourceTags:
+          selector: "ul.video-tags li"
+          read: "text"
+          cardinality: "many"
+          transforms:
+            - op: "trim"
+          required: false
+
+  playback:
+    steps:
+      - id: "detailPage"
+        request:
+          method: "GET"
+          url: "${input.detailUrl}"
+        response:
+          type: "html"
+        extract:
+          fields:
+            embedUrl:
+              selector: "iframe.player-frame"
+              read: "attribute"
+              attribute: "src"
+              transforms:
+                - op: "resolveUrl"
+              required: true
+      - id: "embedPage"
+        request:
+          method: "GET"
+          url: "${detailPage.embedUrl}"
+        response:
+          type: "html"
+        extract:
+          candidates:
+            selector: "video#harbor-player source[src]"
+            limit: 20
+            fields:
+              url:
+                read: "attribute"
+                attribute: "src"
+                transforms:
+                  - op: "resolveUrl"
+                required: true
+              mimeType:
+                read: "attribute"
+                attribute: "type"
+                required: false
+              label:
+                read: "attribute"
+                attribute: "data-quality"
+                required: false
+    result:
+      candidatesFrom: "embedPage.candidates"
+
+playback:
+  allowedTypes:
+    - "hls"
+    - "progressive"
+  preserveMediaQueryParameters: true
+  preferredQuality: "auto"
+  onExpired:
+    action: "resolveAgain"
+    maxAttempts: 1
+
+fixtures:
+  - id: "categories-basic"
+    operation: "categories"
+    responseFile: "fixtures/intermediate-embed-demo/categories.html"
+    expected:
+      minimumItems: 1
+      requiredFields:
+        - "id"
+        - "title"
+        - "url"
+
+  - id: "listing-basic"
+    operation: "listing"
+    responseFile: "fixtures/intermediate-embed-demo/listing.html"
+    input:
+      url: "https://portal.example.org/categories/oceanography"
+    expected:
+      minimumItems: 1
+      requiredFields:
+        - "id"
+        - "title"
+        - "detailUrl"
+
+  - id: "details-basic"
+    operation: "details"
+    responseFile: "fixtures/intermediate-embed-demo/details.html"
+    input:
+      detailUrl: "https://portal.example.org/watch/deep-trench-survey"
+    expected:
+      requiredFields:
+        - "title"
+
+  - id: "playback-two-step"
+    operation: "playback"
+    stepFiles:
+      detailPage: "fixtures/intermediate-embed-demo/details.html"
+      embedPage: "fixtures/intermediate-embed-demo/embed.html"
+    input:
+      detailUrl: "https://portal.example.org/watch/deep-trench-survey"
+    expected:
+      minimumCandidates: 2

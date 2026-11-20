@@ -1,0 +1,151 @@
+schemaVersion: "1.0"
+
+source:
+  id: "chaturbate-affiliates"
+  name: "Chaturbate Public Affiliates API"
+  version: "1.0.0"
+  description: "Level 2 public affiliates online rooms JSON discovery API (live metadata catalog only; internal tokenized playback URLs are undocumented)."
+  author: "Harbor Reference"
+  language: "en"
+  baseUrl: "https://chaturbate.com/api/public/affiliates/onlinerooms"
+  enabledByDefault: false
+
+  permission:
+    basis: "public-api"
+    reference: "Chaturbate Public Affiliates Online Rooms JSON API"
+
+  capabilities:
+    categories: false
+    search: true
+    details: false
+    playback: false
+    live: true
+    intermediateTraversal: false
+
+network:
+  httpsOnly: true
+  lanAccess: false
+
+  allowedHosts:
+    catalog:
+      - "chaturbate.com"
+    images:
+      - "chaturbate.com"
+    media: []
+
+  redirects:
+    maxHops: 2
+
+  timeouts:
+    connectMs: 10000
+    readMs: 15000
+    operationMs: 30000
+
+  limits:
+    maxConcurrentRequests: 1
+    minRequestIntervalMs: 1000
+    maxCatalogResponseBytes: 2097152
+    maxItemsPerPage: 100
+
+  headers:
+    Accept: "application/json"
+
+authentication:
+  type: "none"
+
+taxonomy:
+  namespace: "chaturbate-affiliates"
+  mappings:
+    "public":
+      - "live.public"
+    "music":
+      - "topic.music"
+
+operations:
+  listing:
+    request:
+      method: "GET"
+      url: "${input.url}"
+    response:
+      type: "json"
+    extract:
+      items:
+        pointer: "/results"
+        limit: 100
+        fields:
+          id:
+            pointer: "/username"
+            transforms:
+              - op: "trim"
+              - op: "lowercase"
+            required: true
+          title:
+            pointer: "/room_subject"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          detailUrl:
+            pointer: "/chat_room_url"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+          thumbnailUrl:
+            pointer: "/image_url"
+            transforms:
+              - op: "resolveUrl"
+            required: false
+          liveStatus:
+            pointer: "/current_show"
+            transforms:
+              - op: "trim"
+              - op: "lowercase"
+            required: false
+          sourceTags:
+            pointer: "/tags"
+            cardinality: "many"
+            transforms:
+              - op: "trim"
+            required: false
+    pagination:
+      mode: "offsetLimit"
+      maxPages: 10
+
+  search:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/"
+      query:
+        format: "json"
+        tag: "${input.query}"
+        limit: "50"
+    response:
+      type: "json"
+    reuse:
+      extractFrom: "listing"
+      paginationFrom: "listing"
+
+fixtures:
+  - id: "listing-basic"
+    operation: "listing"
+    responseFile: "fixtures/chaturbate-affiliates/listing.json"
+    input:
+      url: "https://chaturbate.com/api/public/affiliates/onlinerooms/?format=json&limit=50"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "detailUrl"
+
+  - id: "search-basic"
+    operation: "search"
+    responseFile: "fixtures/chaturbate-affiliates/listing.json"
+    input:
+      query: "music"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "detailUrl"

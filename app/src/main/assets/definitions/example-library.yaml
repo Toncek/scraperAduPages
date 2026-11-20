@@ -1,0 +1,283 @@
+schemaVersion: "1.0"
+
+source:
+  id: "example-library"
+  name: "Example Video Library"
+  version: "1.0.0"
+  description: "Level 1 static HTML reference catalog and playback source."
+  author: "Harbor Reference"
+  language: "en"
+  baseUrl: "https://video.example.org"
+  enabledByDefault: false
+
+  permission:
+    basis: "publisher-permission"
+    reference: "Local permission record for fictional example domain"
+
+  capabilities:
+    categories: true
+    search: true
+    details: true
+    playback: true
+    live: false
+    intermediateTraversal: false
+
+network:
+  httpsOnly: true
+  lanAccess: false
+
+  allowedHosts:
+    catalog:
+      - "video.example.org"
+    images:
+      - "images.example.org"
+    media:
+      - "media.example.org"
+
+  redirects:
+    maxHops: 3
+
+  timeouts:
+    connectMs: 10000
+    readMs: 15000
+    operationMs: 30000
+
+  limits:
+    maxConcurrentRequests: 2
+    minRequestIntervalMs: 500
+    maxCatalogResponseBytes: 2097152
+    maxItemsPerPage: 100
+
+  headers:
+    Accept: "text/html,application/json"
+
+authentication:
+  type: "none"
+
+taxonomy:
+  namespace: "example-library"
+  mappings:
+    "Documentaries":
+      - "genre.documentary"
+    "Nature":
+      - "topic.nature"
+    "Education":
+      - "genre.educational"
+    "English":
+      - "language.en"
+
+operations:
+  categories:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/categories"
+    response:
+      type: "html"
+    extract:
+      items:
+        selector: "nav.categories a.category-link"
+        limit: 100
+        fields:
+          id:
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+              - op: "canonicalUrl"
+            required: true
+          title:
+            read: "text"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          url:
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+
+  listing:
+    request:
+      method: "GET"
+      url: "${input.url}"
+    response:
+      type: "html"
+    extract:
+      items:
+        selector: "article.video-card"
+        limit: 100
+        fields:
+          id:
+            selector: "a.video-link"
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+              - op: "canonicalUrl"
+            required: true
+          title:
+            selector: "h2.title"
+            read: "text"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          detailUrl:
+            selector: "a.video-link"
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+          thumbnailUrl:
+            selector: "img.thumbnail"
+            read: "attribute"
+            attribute: "data-src"
+            fallback:
+              selector: "img.thumbnail"
+              read: "attribute"
+              attribute: "src"
+            transforms:
+              - op: "resolveUrl"
+            required: false
+          durationSeconds:
+            selector: ".duration"
+            read: "text"
+            transforms:
+              - op: "trim"
+              - op: "parseDuration"
+            required: false
+          sourceTags:
+            selector: ".tags a"
+            read: "text"
+            cardinality: "many"
+            transforms:
+              - op: "trim"
+            required: false
+    pagination:
+      mode: "nextLink"
+      next:
+        selector: "a[rel=next]"
+        read: "attribute"
+        attribute: "href"
+        transforms:
+          - op: "resolveUrl"
+
+  search:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/search"
+      query:
+        q: "${input.query}"
+    response:
+      type: "html"
+    reuse:
+      extractFrom: "listing"
+      paginationFrom: "listing"
+
+  details:
+    request:
+      method: "GET"
+      url: "${input.detailUrl}"
+    response:
+      type: "html"
+    extract:
+      fields:
+        title:
+          selector: "h1"
+          read: "text"
+          transforms:
+            - op: "trim"
+          required: true
+        description:
+          selector: ".video-description"
+          read: "text"
+          transforms:
+            - op: "trim"
+          required: false
+        sourceTags:
+          selector: ".video-tags a"
+          read: "text"
+          cardinality: "many"
+          transforms:
+            - op: "trim"
+          required: false
+
+  playback:
+    steps:
+      - id: "detailPage"
+        request:
+          method: "GET"
+          url: "${input.detailUrl}"
+        response:
+          type: "html"
+        extract:
+          candidates:
+            selector: "video source[src]"
+            limit: 20
+            fields:
+              url:
+                read: "attribute"
+                attribute: "src"
+                transforms:
+                  - op: "resolveUrl"
+                required: true
+              mimeType:
+                read: "attribute"
+                attribute: "type"
+                required: false
+    result:
+      candidatesFrom: "detailPage.candidates"
+
+playback:
+  allowedTypes:
+    - "hls"
+    - "dash"
+    - "progressive"
+  preserveMediaQueryParameters: true
+  preferredQuality: "auto"
+  onExpired:
+    action: "resolveAgain"
+    maxAttempts: 1
+
+fixtures:
+  - id: "categories-basic"
+    operation: "categories"
+    responseFile: "fixtures/example-library/categories.html"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "url"
+
+  - id: "listing-basic"
+    operation: "listing"
+    responseFile: "fixtures/example-library/listing.html"
+    input:
+      url: "https://video.example.org/categories/nature"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "detailUrl"
+
+  - id: "details-basic"
+    operation: "details"
+    responseFile: "fixtures/example-library/details.html"
+    input:
+      detailUrl: "https://video.example.org/watch/alpine-rivers"
+    expected:
+      requiredFields:
+        - "title"
+
+  - id: "playback-basic"
+    operation: "playback"
+    responseFile: "fixtures/example-library/details.html"
+    input:
+      detailUrl: "https://video.example.org/watch/alpine-rivers"
+    expected:
+      minimumCandidates: 1

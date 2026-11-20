@@ -1,0 +1,304 @@
+schemaVersion: "1.0"
+
+source:
+  id: "eporner-api-v2"
+  name: "Eporner REST API v2"
+  version: "1.1.0"
+  description: "Level 2/4 Eporner REST API v2 catalog with 2-step embed + XHR stream resolution."
+  author: "Harbor Reference"
+  language: "en"
+  baseUrl: "https://www.eporner.com/api/v2"
+  enabledByDefault: true
+
+  permission:
+    basis: "public-api"
+    reference: "Eporner API v2 public documentation and embed playback resolution"
+
+  capabilities:
+    categories: true
+    search: true
+    details: true
+    playback: true
+    live: false
+    intermediateTraversal: true
+
+network:
+  httpsOnly: true
+  lanAccess: false
+
+  allowedHosts:
+    catalog:
+      - "www.eporner.com"
+      - "eporner.com"
+    images:
+      - "www.eporner.com"
+      - "*.eporner.com"
+    media:
+      - "www.eporner.com"
+      - "*.eporner.com"
+
+  redirects:
+    maxHops: 2
+
+  timeouts:
+    connectMs: 10000
+    readMs: 15000
+    operationMs: 30000
+
+  limits:
+    maxConcurrentRequests: 1
+    minRequestIntervalMs: 1000
+    maxCatalogResponseBytes: 2097152
+    maxItemsPerPage: 100
+
+  headers:
+    Accept: "application/json,text/html"
+    User-Agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+authentication:
+  type: "none"
+
+taxonomy:
+  namespace: "eporner-api-v2"
+  mappings:
+    "HD":
+      - "quality.hd"
+    "4K":
+      - "quality.4k"
+
+operations:
+  categories:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/categories/"
+    response:
+      type: "json"
+    extract:
+      items:
+        pointer: "/categories"
+        limit: 100
+        fields:
+          id:
+            pointer: "/slug"
+            fallback:
+              pointer: "/id"
+            required: true
+          title:
+            pointer: "/name"
+            transforms:
+              - op: "trim"
+            required: true
+          url:
+            pointer: "/slug"
+            fallback:
+              pointer: "/name"
+            transforms:
+              - op: "trim"
+              - op: "urlEncode"
+              - op: "template"
+                template: "https://www.eporner.com/api/v2/video/search/?query=${value}&per_page=24&thumbsize=medium&format=json"
+            required: true
+
+  listing:
+    request:
+      method: "GET"
+      url: "${input.url}"
+    response:
+      type: "json"
+    extract:
+      items:
+        pointer: "/videos"
+        limit: 100
+        fields:
+          id:
+            pointer: "/id"
+            required: true
+          title:
+            pointer: "/title"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          detailUrl:
+            pointer: "/id"
+            transforms:
+              - op: "template"
+                template: "https://www.eporner.com/embed/${value}/"
+            required: true
+          thumbnailUrl:
+            pointer: "/default_thumb/src"
+            transforms:
+              - op: "resolveUrl"
+            required: false
+          durationSeconds:
+            pointer: "/length_sec"
+            transforms:
+              - op: "parseInteger"
+            required: false
+          sourceTags:
+            pointer: "/keywords"
+            transforms:
+              - op: "split"
+                delimiter: ","
+              - op: "trim"
+            required: false
+    pagination:
+      mode: "pageQuery"
+      pageParam: "page"
+      maxPages: 20
+
+  search:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/video/search/"
+      query:
+        query: "${input.query}"
+        per_page: "24"
+        thumbsize: "medium"
+        format: "json"
+    response:
+      type: "json"
+    reuse:
+      extractFrom: "listing"
+      paginationFrom: "listing"
+
+  details:
+    request:
+      method: "GET"
+      url: "${input.detailUrl}"
+    response:
+      type: "html"
+    extract:
+      fields:
+        title:
+          selector: "h1"
+          read: "text"
+          fallback:
+            selector: "title"
+            read: "text"
+          transforms:
+            - op: "trim"
+          required: true
+
+  playback:
+    steps:
+      - id: "embedPage"
+        request:
+          method: "GET"
+          url: "${input.detailUrl}"
+        response:
+          type: "html"
+        extract:
+          fields:
+            vid:
+              selector: "script"
+              read: "data"
+              transforms:
+                - op: "regexExtract"
+                  pattern: "EP\\.video\\.player\\.vid\\s*=\\s*'([^']+)'"
+              required: true
+            hash:
+              selector: "script"
+              read: "data"
+              transforms:
+                - op: "regexExtract"
+                  pattern: "EP\\.video\\.player\\.hash\\s*=\\s*'([0-9a-fA-F]{32})'"
+                - op: "hexChunksToBase36"
+              required: true
+      - id: "xhrVideo"
+        request:
+          method: "GET"
+          url: "https://www.eporner.com/xhr/video/${embedPage.vid}?hash=${embedPage.hash}&domain=www.eporner.com&pixelRatio=1&playerHeight=720&fallback=false&embed=true&supportedFormats=hls,mp4"
+        response:
+          type: "json"
+        extract:
+          candidates:
+            pointer: "/sources/mp4"
+            limit: 10
+            fields:
+              url:
+                pointer: "/src"
+                required: true
+              qualityLabel:
+                pointer: "/labelShort"
+                required: false
+              mimeType:
+                pointer: "/type"
+                required: false
+    result:
+      candidatesFrom: "xhrVideo.candidates"
+
+playback:
+  allowedTypes:
+    - "hls"
+    - "progressive"
+  preserveMediaQueryParameters: true
+  preferredQuality: "highest"
+  onExpired:
+    action: "resolveAgain"
+    maxAttempts: 1
+
+fixtures:
+  - id: "categories-basic"
+    operation: "categories"
+    responseFile: "fixtures/eporner-api-v2/categories.json"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "url"
+
+  - id: "listing-basic"
+    operation: "listing"
+    responseFile: "fixtures/eporner-api-v2/listing.json"
+    input:
+      url: "https://www.eporner.com/api/v2/video/search/?query=all&per_page=24&thumbsize=medium&format=json"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "detailUrl"
+
+  - id: "details-basic"
+    operation: "details"
+    responseFile: "fixtures/eporner-api-v2/details.html"
+    input:
+      detailUrl: "https://www.eporner.com/embed/AbCdEfGhIjK/"
+    expected:
+      requiredFields:
+        - "title"
+
+  - id: "playback-two-step"
+    operation: "playback"
+    stepFiles:
+      embedPage: "fixtures/eporner-api-v2/details.html"
+      xhrVideo: "fixtures/eporner-api-v2/xhr-video.json"
+    input:
+      detailUrl: "https://www.eporner.com/embed/AbCdEfGhIjK/"
+    expected:
+      minimumCandidates: 2
+      requiredFields:
+        - "url"
+
+settingsReference:
+  provider: "magicoflolis/Magic-PH"
+  repository: "https://github.com/magicoflolis/Magic-PH"
+  pinnedCommit: "5764d037d9b52009218815152ef4e976c2c62255"
+  license: "MIT"
+  format: "normalized-source-capabilities"
+  website:
+    id: "eporner"
+    name: "Eporner"
+    catalogHosts:
+      - "www.eporner.com"
+    imageHosts:
+      - "www.eporner.com"
+    mediaHosts:
+      - "www.eporner.com"
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: true
+    sourceStatus: "fixture-verified"

@@ -1,0 +1,12 @@
+{
+  "categories": [
+    {
+      "category": "Amateur",
+      "url": "https://api.redtube.com/?data=redtube.Videos.searchVideos&output=json&category=amateur"
+    },
+    {
+      "category": "HD",
+      "url": "https://api.redtube.com/?data=redtube.Videos.searchVideos&output=json&category=hd"
+    }
+  ]
+}

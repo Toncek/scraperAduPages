@@ -1,0 +1,674 @@
+settingsReference:
+  provider: "magicoflolis/Magic-PH"
+  repository: "https://github.com/magicoflolis/Magic-PH"
+  pinnedCommit: "5764d037d9b52009218815152ef4e976c2c62255"
+  license: "MIT"
+  format: "normalized-source-capabilities"
+  secondaryDataset: "platform-dataset.json"
+  policyNotice: "Reference-only metadata. Entries MUST NOT auto-activate or execute upstream userscript JavaScript."
+
+qualityPreferences:
+  supportedModes:
+    - "highest"
+    - "preferredResolution"
+    - "preferredBitrate"
+    - "manual"
+    - "auto"
+  defaultMode: "auto"
+
+websites:
+  - id: "pornhub"
+    name: "Pornhub"
+    referenceSource: "magic-ph+dataset"
+    catalogHosts:
+      - "www.pornhub.com"
+      - "pornhub.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: false
+    capabilities:
+      categories: true
+      search: true
+      details: true
+      playback: false
+      live: false
+    urlFormats:
+      search: "https://www.pornhub.com/webmasters/search?search={query}"
+      categories: "https://www.pornhub.com/webmasters/categories"
+      directVideo: "https://www.pornhub.com/view_video.php?viewkey={id}"
+    limitations:
+      - "Public webmasters JSON API covers catalog/categories/embed lookup; raw stream URL signing is undisclosed."
+      - "Magic-PH download logic is prohibited in Harbor; playback requires authorized non-JS stream or official player."
+    sourceStatus: "reference-only"
+
+  - id: "pornhub-premium"
+    name: "Pornhub Premium"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "www.pornhubpremium.com"
+      - "pornhubpremium.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: false
+    capabilities:
+      categories: true
+      search: true
+      details: true
+      playback: false
+      live: false
+    urlFormats:
+      directVideo: "https://www.pornhubpremium.com/view_video.php?viewkey={id}"
+    limitations:
+      - "Subscription-gated content; interactive login and DRM/access bypass are unsupported."
+    sourceStatus: "reference-only"
+
+  - id: "redtube"
+    name: "RedTube"
+    referenceSource: "magic-ph+dataset"
+    catalogHosts:
+      - "api.redtube.com"
+      - "www.redtube.com"
+      - "redtube.com"
+      - "embed.redtube.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: false
+    capabilities:
+      categories: true
+      search: true
+      details: true
+      playback: false
+      live: false
+    urlFormats:
+      search: "https://api.redtube.com/?data=redtube.Videos.searchVideos&output=json&search={query}"
+      categories: "https://api.redtube.com/?data=redtube.Categories.getCategoriesList&output=json"
+      directVideo: "https://www.redtube.com/{id}"
+    limitations:
+      - "Official Query API provides metadata and embed URLs; raw stream URL signing is undisclosed."
+    sourceStatus: "reference-only"
+
+  - id: "tube8"
+    name: "Tube8"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "www.tube8.com"
+      - "tube8.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: false
+    capabilities:
+      categories: true
+      search: true
+      details: true
+      playback: false
+      live: false
+    urlFormats:
+      directVideo: "https://www.tube8.com/porn-video/{id}/"
+    limitations:
+      - "Requires explicit declarative definition and authorized endpoint review before activation."
+    sourceStatus: "reference-only"
+
+  - id: "thumbzilla"
+    name: "Thumbzilla"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "www.thumbzilla.com"
+      - "thumbzilla.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: false
+    capabilities:
+      categories: true
+      search: true
+      details: true
+      playback: false
+      live: false
+    urlFormats:
+      directVideo: "https://www.thumbzilla.com/video/{id}/{slug}"
+    limitations:
+      - "Requires explicit declarative definition and authorized endpoint review before activation."
+    sourceStatus: "reference-only"
+
+  - id: "xhamster"
+    name: "xHamster"
+    referenceSource: "magic-ph+dataset"
+    catalogHosts:
+      - "xhamster.com"
+      - "www.xhamster.com"
+      - "partners.xhamster.com"
+      - "xh.video"
+    imageHosts:
+      - "thumb-v7.xhcdn.com"
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats:
+      directVideo: "https://xh.video/v/{short_code}"
+    limitations:
+      - "Partner portal requires registration and domain approval; ToS clause 2.3.5 prohibits unauthorized scrapers and clause 2.3.15 prohibits custom players/hotlinking."
+    sourceStatus: "reference-only"
+
+  - id: "xnxx"
+    name: "XNXX"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "www.xnxx.com"
+      - "xnxx.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats:
+      directVideo: "https://www.xnxx.com/video-{id}/{slug}"
+    limitations:
+      - "No documented public JSON API; automated scraping restricted by Terms of Service."
+    sourceStatus: "reference-only"
+
+  - id: "xvideos"
+    name: "XVideos"
+    referenceSource: "magic-ph+dataset"
+    catalogHosts:
+      - "www.xvideos.com"
+      - "xvideos.com"
+      - "info.xvideos.net"
+      - "public-assets.xvideos-cdn.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats:
+      directVideo: "https://www.xvideos.com/video.{id}/{slug}"
+    limitations:
+      - "No public live REST API; distributes daily CSV bulk dumps only; automated web scraping prohibited by ToS."
+    sourceStatus: "reference-only"
+
+  - id: "youporn"
+    name: "YouPorn"
+    referenceSource: "magic-ph+dataset"
+    catalogHosts:
+      - "www.youporn.com"
+      - "youporn.com"
+      - "youporngay.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: true
+      details: true
+      playback: false
+      live: false
+    urlFormats:
+      directVideo: "https://www.youporn.com/watch/{id}/{slug}/"
+    limitations:
+      - "Hubtraffic-family webmaster API metadata only; raw stream signing is undisclosed."
+    sourceStatus: "reference-only"
+
+  - id: "91porn"
+    name: "91Porn"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "91porn.com"
+      - "www.91porn.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Unverified public API and ToS status; reference-only host mapping."
+    sourceStatus: "reference-only"
+
+  - id: "91porna"
+    name: "91Porna"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "91porna.com"
+      - "www.91porna.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Unverified public API and ToS status; reference-only host mapping."
+    sourceStatus: "reference-only"
+
+  - id: "hqporner"
+    name: "HQPorner"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "hqporner.com"
+      - "www.hqporner.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Requires explicit declarative definition and authorization review."
+    sourceStatus: "reference-only"
+
+  - id: "spankbang"
+    name: "SpankBang"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "spankbang.com"
+      - "www.spankbang.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Requires explicit declarative definition and authorization review."
+    sourceStatus: "reference-only"
+
+  - id: "porntrex"
+    name: "PornTrex"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "www.porntrex.com"
+      - "porntrex.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Requires explicit declarative definition and authorization review."
+    sourceStatus: "reference-only"
+
+  - id: "analdin"
+    name: "AnalDin"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "www.analdin.com"
+      - "analdin.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Requires explicit declarative definition and authorization review."
+    sourceStatus: "reference-only"
+
+  - id: "sxyprn"
+    name: "sxyprn"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "sxyprn.com"
+      - "www.sxyprn.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Requires explicit declarative definition and authorization review."
+    sourceStatus: "reference-only"
+
+  - id: "porn00"
+    name: "Porn00"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "www.porn00.org"
+      - "porn00.org"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Requires explicit declarative definition and authorization review."
+    sourceStatus: "reference-only"
+
+  - id: "eporner"
+    name: "Eporner"
+    referenceSource: "magic-ph+dataset"
+    catalogHosts:
+      - "www.eporner.com"
+      - "eporner.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: false
+    capabilities:
+      categories: true
+      search: true
+      details: true
+      playback: false
+      live: false
+    urlFormats:
+      search: "https://www.eporner.com/api/v2/video/search/?query={query}"
+      categories: "https://www.eporner.com/api/v2/categories/"
+      directVideo: "https://www.eporner.com/embed/{id}/"
+    limitations:
+      - "Official REST API v2 supports categories, search, video/id, and removals; sequential requests required; external playback uses hosted iframe and raw stream signing is undisclosed."
+    sourceStatus: "reference-only"
+
+  - id: "youjizz"
+    name: "YouJizz"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "www.youjizz.com"
+      - "youjizz.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Requires explicit declarative definition and authorization review."
+    sourceStatus: "reference-only"
+
+  - id: "beeg"
+    name: "Beeg"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "beeg.com"
+      - "www.beeg.com"
+      - "store.externulls.com"
+    imageHosts:
+      - "thumbs.externulls.com"
+    mediaHosts:
+      - "video.beeg.com"
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Marked work-in-progress/unsupported in Magic-PH README; requires independent API authorization."
+    sourceStatus: "reference-only"
+
+  - id: "jable"
+    name: "Jable"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "jable.tv"
+      - "fs1.app"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Requires explicit declarative definition and authorization review."
+    sourceStatus: "reference-only"
+
+  - id: "missav"
+    name: "MissAV"
+    referenceSource: "magic-ph"
+    catalogHosts:
+      - "missav.ai"
+      - "missav.com"
+      - "missav.ws"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Requires explicit declarative definition and authorization review."
+    sourceStatus: "reference-only"
+
+  - id: "chaturbate"
+    name: "Chaturbate"
+    referenceSource: "dataset"
+    catalogHosts:
+      - "chaturbate.com"
+      - "www.chaturbate.com"
+      - "eventsapi.chaturbate.com"
+    imageHosts: []
+    mediaHosts:
+      - "live.stream.highwebmedia.com"
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: true
+      details: false
+      playback: false
+      live: true
+    urlFormats:
+      search: "https://chaturbate.com/api/public/affiliates/onlinerooms/?format=json"
+    limitations:
+      - "Public Affiliates Online Rooms API provides live room discovery; internal viewer stream tokens are undocumented."
+    sourceStatus: "reference-only"
+
+  - id: "stripchat"
+    name: "Stripchat"
+    referenceSource: "dataset"
+    catalogHosts:
+      - "stripchat.com"
+      - "go.rmhfrtnd.com"
+      - "api.stripcash.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: true
+    urlFormats:
+      categories: "https://go.rmhfrtnd.com/api/dicts"
+      listing: "https://go.rmhfrtnd.com/api/models/online"
+    limitations:
+      - "Dynamic CDNConfig host resolution and geo-privacy enforcement required before any active integration."
+    sourceStatus: "reference-only"
+
+  - id: "livejasmin"
+    name: "LiveJasmin"
+    referenceSource: "dataset"
+    catalogHosts:
+      - "www.livejasmin.com"
+      - "livejasmin.com"
+      - "auth.awempire.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: true
+    urlFormats: {}
+    limitations:
+      - "Requires authenticated AWEmpire account and mandatory official video player."
+    sourceStatus: "reference-only"
+
+  - id: "onlyfans"
+    name: "OnlyFans"
+    referenceSource: "magic-ph+dataset"
+    catalogHosts:
+      - "onlyfans.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Closed subscription platform with no official public API; DRM protection and ToS Section 8.7 strictly prohibit automated scraping or access-control circumvention."
+    sourceStatus: "reference-only"
+
+  - id: "fansly"
+    name: "Fansly"
+    referenceSource: "dataset"
+    catalogHosts:
+      - "fansly.com"
+      - "www.fansly.com"
+    imageHosts: []
+    mediaHosts: []
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: false
+    directVideoSupported: false
+    capabilities:
+      categories: false
+      search: false
+      details: false
+      playback: false
+      live: false
+    urlFormats: {}
+    limitations:
+      - "Closed subscription platform with no official public developer API; ToS Sections 01.6/04.1/04.2 strictly prohibit bots and automated extraction."
+    sourceStatus: "reference-only"

@@ -1,0 +1,14 @@
+{
+  "categories": [
+    {
+      "id": "1",
+      "slug": "hd",
+      "name": "HD"
+    },
+    {
+      "id": "2",
+      "slug": "4k-ultra-hd",
+      "name": "4K"
+    }
+  ]
+}

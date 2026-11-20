@@ -1,0 +1,27 @@
+{
+  "count": 2,
+  "results": [
+    {
+      "username": "demo_room_1",
+      "room_subject": "Sanitized Live Acoustic Session",
+      "tags": ["music", "public"],
+      "gender": "f",
+      "num_users": 142,
+      "seconds_online": 1800,
+      "current_show": "public",
+      "image_url": "https://chaturbate.com/static/demo_room_1.jpg",
+      "chat_room_url": "https://chaturbate.com/demo_room_1/"
+    },
+    {
+      "username": "demo_room_2",
+      "room_subject": "Sanitized Live Q&A Stream",
+      "tags": ["chat", "public"],
+      "gender": "m",
+      "num_users": 89,
+      "seconds_online": 950,
+      "current_show": "public",
+      "image_url": "https://chaturbate.com/static/demo_room_2.jpg",
+      "chat_room_url": "https://chaturbate.com/demo_room_2/"
+    }
+  ]
+}

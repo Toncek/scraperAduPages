@@ -1,0 +1,308 @@
+schemaVersion: "1.0"
+
+source:
+  id: "xnxx-html"
+  name: "XNXX Video Catalog"
+  version: "1.1.0"
+  description: "Level 1/3 HTML catalog and player script extraction for XNXX."
+  author: "Harbor Reference"
+  language: "en"
+  baseUrl: "https://www.xnxx.com"
+  enabledByDefault: true
+
+  permission:
+    basis: "public-api"
+    reference: "XNXX public HTML catalog pages"
+
+  capabilities:
+    categories: true
+    search: true
+    details: true
+    playback: true
+    live: false
+    intermediateTraversal: false
+
+network:
+  httpsOnly: true
+  lanAccess: false
+
+  allowedHosts:
+    catalog:
+      - "www.xnxx.com"
+      - "xnxx.com"
+    images:
+      - "www.xnxx.com"
+      - "*.xnxx-cdn.com"
+    media:
+      - "www.xnxx.com"
+      - "*.xnxx-cdn.com"
+
+  redirects:
+    maxHops: 3
+
+  timeouts:
+    connectMs: 10000
+    readMs: 15000
+    operationMs: 30000
+
+  limits:
+    maxConcurrentRequests: 2
+    minRequestIntervalMs: 500
+    maxCatalogResponseBytes: 2097152
+    maxItemsPerPage: 100
+
+  headers:
+    Accept: "text/html"
+
+authentication:
+  type: "none"
+
+taxonomy:
+  namespace: "xnxx-html"
+  mappings:
+    "HD":
+      - "quality.hd"
+
+operations:
+  categories:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/tags"
+    response:
+      type: "html"
+    extract:
+      items:
+        selector: "ul#tags li a[href^=/search/], div.tags-list a, ul.categories a"
+        limit: 100
+        fields:
+          id:
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+              - op: "canonicalUrl"
+            required: true
+          title:
+            read: "text"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          url:
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+
+  listing:
+    request:
+      method: "GET"
+      url: "${input.url}"
+    response:
+      type: "html"
+    extract:
+      items:
+        selector: "div.thumb-block"
+        limit: 100
+        fields:
+          id:
+            selector: "div.thumb-under p a, div.thumb-under p.title a, p.title a"
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+              - op: "canonicalUrl"
+            required: true
+          title:
+            selector: "div.thumb-under p a, div.thumb-under p.title a, p.title a"
+            read: "attribute"
+            attribute: "title"
+            fallback:
+              selector: "div.thumb-under p a, div.thumb-under p.title a, p.title a"
+              read: "text"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          detailUrl:
+            selector: "div.thumb-under p a, div.thumb-under p.title a, p.title a"
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+          thumbnailUrl:
+            selector: "div.thumb img"
+            read: "attribute"
+            attribute: "data-src"
+            fallback:
+              selector: "div.thumb img"
+              read: "attribute"
+              attribute: "src"
+            transforms:
+              - op: "resolveUrl"
+            required: false
+          durationSeconds:
+            selector: "p.metadata span.duration, p.metadata"
+            read: "text"
+            transforms:
+              - op: "regexExtract"
+                pattern: "(\\d+:\\d+(?::\\d+)?|\\d+\\s*(?:h|hr|hrs|min|m|sec|s)(?:\\s*\\d+\\s*(?:min|m|sec|s))?)"
+              - op: "trim"
+              - op: "parseDuration"
+            required: false
+    pagination:
+      mode: "nextLink"
+      next:
+        selector: "div.pagination a.next, div.pagination a.next-page"
+        read: "attribute"
+        attribute: "href"
+        transforms:
+          - op: "resolveUrl"
+
+  search:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/"
+      query:
+        k: "${input.query}"
+    response:
+      type: "html"
+    reuse:
+      extractFrom: "listing"
+      paginationFrom: "listing"
+
+  details:
+    request:
+      method: "GET"
+      url: "${input.detailUrl}"
+    response:
+      type: "html"
+    extract:
+      fields:
+        title:
+          selector: "div.video-title h1"
+          read: "text"
+          fallback:
+            selector: "title"
+            read: "text"
+          transforms:
+            - op: "trim"
+          required: true
+        description:
+          selector: "p.video-description"
+          read: "text"
+          transforms:
+            - op: "trim"
+          required: false
+        sourceTags:
+          selector: "div.video-tags a"
+          read: "text"
+          cardinality: "many"
+          transforms:
+            - op: "trim"
+          required: false
+
+  playback:
+    steps:
+      - id: "detailPage"
+        request:
+          method: "GET"
+          url: "${input.detailUrl}"
+        response:
+          type: "html"
+        extract:
+          candidates:
+            selector: "script"
+            limit: 10
+            fields:
+              url:
+                read: "data"
+                transforms:
+                  - op: "regexExtract"
+                    pattern: "setVideoHLS\\('([^']+)'\\)"
+                  - op: "resolveUrl"
+                fallback:
+                  read: "data"
+                  transforms:
+                    - op: "regexExtract"
+                      pattern: "setVideoUrlHigh\\('([^']+)'\\)"
+                    - op: "resolveUrl"
+                required: true
+    result:
+      candidatesFrom: "detailPage.candidates"
+
+playback:
+  allowedTypes:
+    - "hls"
+    - "progressive"
+  preserveMediaQueryParameters: true
+  preferredQuality: "highest"
+  onExpired:
+    action: "resolveAgain"
+    maxAttempts: 1
+
+fixtures:
+  - id: "categories-basic"
+    operation: "categories"
+    responseFile: "fixtures/xnxx-html/categories.html"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "url"
+
+  - id: "listing-basic"
+    operation: "listing"
+    responseFile: "fixtures/xnxx-html/listing.html"
+    input:
+      url: "https://www.xnxx.com/search/demo"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "detailUrl"
+
+  - id: "details-basic"
+    operation: "details"
+    responseFile: "fixtures/xnxx-html/details.html"
+    input:
+      detailUrl: "https://www.xnxx.com/video-demo01/sanitized_demo_1"
+    expected:
+      requiredFields:
+        - "title"
+
+  - id: "playback-basic"
+    operation: "playback"
+    responseFile: "fixtures/xnxx-html/details.html"
+    input:
+      detailUrl: "https://www.xnxx.com/video-demo01/sanitized_demo_1"
+    expected:
+      minimumCandidates: 1
+      requiredFields:
+        - "url"
+
+settingsReference:
+  provider: "magicoflolis/Magic-PH"
+  repository: "https://github.com/magicoflolis/Magic-PH"
+  pinnedCommit: "5764d037d9b52009218815152ef4e976c2c62255"
+  license: "MIT"
+  format: "normalized-source-capabilities"
+  website:
+    id: "xnxx"
+    name: "XNXX"
+    catalogHosts:
+      - "www.xnxx.com"
+      - "xnxx.com"
+    imageHosts:
+      - "www.xnxx.com"
+    mediaHosts:
+      - "www.xnxx.com"
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: true
+    sourceStatus: "fixture-verified"

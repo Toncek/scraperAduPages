@@ -1,0 +1,21 @@
+# Gradle / Android build artifacts
+.gradle/
+build/
+*/build/
+captures/
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Local environment & IDE
+local.properties
+.idea/
+*.iml
+.cxx/
+.externalNativeBuild/
+.DS_Store
+
+# Reference research clone (do not commit nested git repo)
+Magic-PH/

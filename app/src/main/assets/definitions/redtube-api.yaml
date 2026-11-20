@@ -1,0 +1,293 @@
+schemaVersion: "1.0"
+
+source:
+  id: "redtube-api"
+  name: "RedTube Query API"
+  version: "1.1.0"
+  description: "Level 2/4 official RedTube Query API catalog with 2-step embed + HLS JSON playlist resolution."
+  author: "Harbor Reference"
+  language: "en"
+  baseUrl: "https://api.redtube.com"
+  enabledByDefault: true
+
+  permission:
+    basis: "public-api"
+    reference: "RedTube official webmaster Query API and embed playback endpoints"
+
+  capabilities:
+    categories: true
+    search: true
+    details: true
+    playback: true
+    live: false
+    intermediateTraversal: true
+
+network:
+  httpsOnly: true
+  lanAccess: false
+
+  allowedHosts:
+    catalog:
+      - "api.redtube.com"
+      - "www.redtube.com"
+      - "embed.redtube.com"
+    images:
+      - "www.redtube.com"
+      - "*.rdtcdn.com"
+    media:
+      - "embed.redtube.com"
+      - "*.rdtcdn.com"
+
+  redirects:
+    maxHops: 2
+
+  timeouts:
+    connectMs: 10000
+    readMs: 15000
+    operationMs: 30000
+
+  limits:
+    maxConcurrentRequests: 1
+    minRequestIntervalMs: 2000
+    maxCatalogResponseBytes: 2097152
+    maxItemsPerPage: 20
+
+  headers:
+    Accept: "application/json,text/html"
+
+authentication:
+  type: "none"
+
+taxonomy:
+  namespace: "redtube-api"
+  mappings:
+    "Amateur":
+      - "category.amateur"
+    "HD":
+      - "quality.hd"
+
+operations:
+  categories:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/"
+      query:
+        data: "redtube.Categories.getCategoriesList"
+        output: "json"
+    response:
+      type: "json"
+    extract:
+      items:
+        pointer: "/categories"
+        limit: 100
+        fields:
+          id:
+            pointer: "/category"
+            transforms:
+              - op: "trim"
+              - op: "lowercase"
+            required: true
+          title:
+            pointer: "/category"
+            transforms:
+              - op: "trim"
+            required: true
+          url:
+            pointer: "/category"
+            transforms:
+              - op: "trim"
+              - op: "urlEncode"
+              - op: "template"
+                template: "https://api.redtube.com/?data=redtube.Videos.searchVideos&output=json&category=${value}"
+            required: true
+
+  listing:
+    request:
+      method: "GET"
+      url: "${input.url}"
+    response:
+      type: "json"
+    extract:
+      items:
+        pointer: "/videos"
+        limit: 20
+        fields:
+          id:
+            pointer: "/video/video_id"
+            required: true
+          title:
+            pointer: "/video/title"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          detailUrl:
+            pointer: "/video/video_id"
+            transforms:
+              - op: "template"
+                template: "https://embed.redtube.com/?id=${value}"
+            required: true
+          thumbnailUrl:
+            pointer: "/video/default_thumb"
+            transforms:
+              - op: "resolveUrl"
+            required: false
+          durationSeconds:
+            pointer: "/video/duration"
+            transforms:
+              - op: "trim"
+              - op: "parseDuration"
+            required: false
+          sourceTags:
+            pointer: "/video/tags"
+            cardinality: "many"
+            required: false
+    pagination:
+      mode: "pageQuery"
+      pageParam: "page"
+      maxPages: 20
+
+  search:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/"
+      query:
+        data: "redtube.Videos.searchVideos"
+        output: "json"
+        search: "${input.query}"
+    response:
+      type: "json"
+    reuse:
+      extractFrom: "listing"
+      paginationFrom: "listing"
+
+  details:
+    request:
+      method: "GET"
+      url: "${input.detailUrl}"
+    response:
+      type: "html"
+    extract:
+      fields:
+        title:
+          selector: "title"
+          read: "text"
+          transforms:
+            - op: "trim"
+          required: true
+
+  playback:
+    steps:
+      - id: "embedPage"
+        request:
+          method: "GET"
+          url: "${input.detailUrl}"
+        response:
+          type: "html"
+        extract:
+          fields:
+            hlsUrl:
+              selector: "script"
+              read: "data"
+              transforms:
+                - op: "regexExtract"
+                  pattern: "\"format\":\"hls\"[^}]*\"videoUrl\":\"([^\"]+)\""
+                - op: "unescapeJson"
+                - op: "resolveUrl"
+              required: true
+      - id: "hlsList"
+        request:
+          method: "GET"
+          url: "${embedPage.hlsUrl}"
+        response:
+          type: "json"
+        extract:
+          candidates:
+            pointer: "/"
+            limit: 10
+            fields:
+              url:
+                pointer: "/videoUrl"
+                required: true
+              qualityLabel:
+                pointer: "/quality"
+                required: false
+    result:
+      candidatesFrom: "hlsList.candidates"
+
+playback:
+  allowedTypes:
+    - "hls"
+    - "progressive"
+  preserveMediaQueryParameters: true
+  preferredQuality: "highest"
+  onExpired:
+    action: "resolveAgain"
+    maxAttempts: 1
+
+fixtures:
+  - id: "categories-basic"
+    operation: "categories"
+    responseFile: "fixtures/redtube-api/categories.json"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "url"
+
+  - id: "listing-basic"
+    operation: "listing"
+    responseFile: "fixtures/redtube-api/listing.json"
+    input:
+      url: "https://api.redtube.com/?data=redtube.Videos.searchVideos&output=json&category=demo"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "detailUrl"
+
+  - id: "details-basic"
+    operation: "details"
+    responseFile: "fixtures/redtube-api/embed.html"
+    input:
+      detailUrl: "https://embed.redtube.com/?id=100001"
+    expected:
+      requiredFields:
+        - "title"
+
+  - id: "playback-two-step"
+    operation: "playback"
+    stepFiles:
+      embedPage: "fixtures/redtube-api/embed.html"
+      hlsList: "fixtures/redtube-api/hls-list.json"
+    input:
+      detailUrl: "https://embed.redtube.com/?id=100001"
+    expected:
+      minimumCandidates: 2
+      requiredFields:
+        - "url"
+
+settingsReference:
+  provider: "magicoflolis/Magic-PH"
+  repository: "https://github.com/magicoflolis/Magic-PH"
+  pinnedCommit: "5764d037d9b52009218815152ef4e976c2c62255"
+  license: "MIT"
+  format: "normalized-source-capabilities"
+  website:
+    id: "redtube"
+    name: "RedTube"
+    catalogHosts:
+      - "api.redtube.com"
+      - "www.redtube.com"
+      - "embed.redtube.com"
+    imageHosts:
+      - "www.redtube.com"
+    mediaHosts:
+      - "embed.redtube.com"
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: true
+    sourceStatus: "fixture-verified"

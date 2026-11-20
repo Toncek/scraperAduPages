@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Embedded JSON Catalog - Science</title>
+</head>
+<body>
+  <div id="app"></div>
+  <script id="catalog-data" type="application/json">
+  {
+    "videos": [
+      {
+        "id": "orbital-mechanics",
+        "title": "Orbital Mechanics Explained",
+        "detailUrl": "/watch/orbital-mechanics",
+        "thumbnailUrl": "https://images.example.org/thumbs/orbital-mechanics.jpg",
+        "duration": "14:20",
+        "tags": ["Science", "Astronomy"]
+      },
+      {
+        "id": "spectroscopy-basics",
+        "title": "Stellar Spectroscopy Basics",
+        "detailUrl": "/watch/spectroscopy-basics",
+        "thumbnailUrl": "https://images.example.org/thumbs/spectroscopy-basics.jpg",
+        "duration": "09:15",
+        "tags": ["Science"]
+      }
+    ],
+    "pagination": {
+      "nextUrl": "https://catalog.example.org/categories/science?cursor=page2"
+    }
+  }
+  </script>
+</body>
+</html>

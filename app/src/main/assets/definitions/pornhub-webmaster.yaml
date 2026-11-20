@@ -1,0 +1,269 @@
+schemaVersion: "1.0"
+
+source:
+  id: "pornhub-webmaster"
+  name: "Pornhub Webmasters API"
+  version: "1.1.0"
+  description: "Level 2/3 official Pornhub Webmasters JSON API catalog with embed HLS stream extraction."
+  author: "Harbor Reference"
+  language: "en"
+  baseUrl: "https://www.pornhub.com/webmasters"
+  enabledByDefault: true
+
+  permission:
+    basis: "public-api"
+    reference: "Pornhub public Webmasters JSON metadata endpoints and official embed player"
+
+  capabilities:
+    categories: true
+    search: true
+    details: true
+    playback: true
+    live: false
+    intermediateTraversal: false
+
+network:
+  httpsOnly: true
+  lanAccess: false
+
+  allowedHosts:
+    catalog:
+      - "www.pornhub.com"
+      - "www.pornhub.org"
+    images:
+      - "www.pornhub.com"
+      - "*.phncdn.com"
+    media:
+      - "www.pornhub.com"
+      - "*.phncdn.com"
+
+  redirects:
+    maxHops: 2
+
+  timeouts:
+    connectMs: 10000
+    readMs: 15000
+    operationMs: 30000
+
+  limits:
+    maxConcurrentRequests: 1
+    minRequestIntervalMs: 1000
+    maxCatalogResponseBytes: 2097152
+    maxItemsPerPage: 30
+
+  headers:
+    Accept: "application/json,text/html"
+
+authentication:
+  type: "none"
+
+taxonomy:
+  namespace: "pornhub-webmaster"
+  mappings:
+    "HD":
+      - "quality.hd"
+    "Verified":
+      - "trust.verified"
+
+operations:
+  categories:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/categories"
+    response:
+      type: "json"
+    extract:
+      items:
+        pointer: "/categories"
+        limit: 100
+        fields:
+          id:
+            pointer: "/category"
+            transforms:
+              - op: "trim"
+            required: true
+          title:
+            pointer: "/category"
+            transforms:
+              - op: "trim"
+            required: true
+          url:
+            pointer: "/category"
+            transforms:
+              - op: "trim"
+              - op: "urlEncode"
+              - op: "template"
+                template: "https://www.pornhub.com/webmasters/search?category=${value}"
+            required: true
+
+  listing:
+    request:
+      method: "GET"
+      url: "${input.url}"
+    response:
+      type: "json"
+    extract:
+      items:
+        pointer: "/videos"
+        limit: 30
+        fields:
+          id:
+            pointer: "/video_id"
+            required: true
+          title:
+            pointer: "/title"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          detailUrl:
+            pointer: "/video_id"
+            transforms:
+              - op: "template"
+                template: "https://www.pornhub.com/embed/${value}"
+            required: true
+          thumbnailUrl:
+            pointer: "/default_thumb"
+            transforms:
+              - op: "resolveUrl"
+            required: false
+          durationSeconds:
+            pointer: "/duration"
+            transforms:
+              - op: "trim"
+              - op: "parseDuration"
+            required: false
+    pagination:
+      mode: "pageQuery"
+      pageParam: "page"
+      maxPages: 20
+
+  search:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/search"
+      query:
+        search: "${input.query}"
+    response:
+      type: "json"
+    reuse:
+      extractFrom: "listing"
+      paginationFrom: "listing"
+
+  details:
+    request:
+      method: "GET"
+      url: "${input.detailUrl}"
+    response:
+      type: "html"
+    extract:
+      fields:
+        title:
+          selector: "title"
+          read: "text"
+          transforms:
+            - op: "trim"
+          required: true
+
+  playback:
+    steps:
+      - id: "embedPage"
+        request:
+          method: "GET"
+          url: "${input.detailUrl}"
+        response:
+          type: "html"
+        extract:
+          candidates:
+            selector: "script"
+            limit: 10
+            fields:
+              url:
+                read: "data"
+                transforms:
+                  - op: "regexExtract"
+                    pattern: "\"format\":\"hls\",\"videoUrl\":\"([^\"]+)\""
+                  - op: "unescapeJson"
+                  - op: "resolveUrl"
+                required: true
+              qualityLabel:
+                read: "data"
+                transforms:
+                  - op: "regexExtract"
+                    pattern: "\"format\":\"hls\",\"videoUrl\":\"[^\"]+\",\"quality\":\"([^\"]+)\""
+                required: false
+    result:
+      candidatesFrom: "embedPage.candidates"
+
+playback:
+  allowedTypes:
+    - "hls"
+    - "progressive"
+  preserveMediaQueryParameters: true
+  preferredQuality: "highest"
+  onExpired:
+    action: "resolveAgain"
+    maxAttempts: 1
+
+fixtures:
+  - id: "categories-basic"
+    operation: "categories"
+    responseFile: "fixtures/pornhub-webmaster/categories.json"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "url"
+
+  - id: "listing-basic"
+    operation: "listing"
+    responseFile: "fixtures/pornhub-webmaster/listing.json"
+    input:
+      url: "https://www.pornhub.com/webmasters/search?category=demo"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "detailUrl"
+
+  - id: "details-basic"
+    operation: "details"
+    responseFile: "fixtures/pornhub-webmaster/embed.html"
+    input:
+      detailUrl: "https://www.pornhub.com/embed/phdemo001"
+    expected:
+      requiredFields:
+        - "title"
+
+  - id: "playback-basic"
+    operation: "playback"
+    responseFile: "fixtures/pornhub-webmaster/embed.html"
+    input:
+      detailUrl: "https://www.pornhub.com/embed/phdemo001"
+    expected:
+      minimumCandidates: 1
+      requiredFields:
+        - "url"
+
+settingsReference:
+  provider: "magicoflolis/Magic-PH"
+  repository: "https://github.com/magicoflolis/Magic-PH"
+  pinnedCommit: "5764d037d9b52009218815152ef4e976c2c62255"
+  license: "MIT"
+  format: "normalized-source-capabilities"
+  website:
+    id: "pornhub"
+    name: "Pornhub"
+    catalogHosts:
+      - "www.pornhub.com"
+    imageHosts:
+      - "www.pornhub.com"
+    mediaHosts:
+      - "www.pornhub.com"
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: true
+    sourceStatus: "fixture-verified"
