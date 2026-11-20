@@ -227,6 +227,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         onFeaturedItemFocused = { item -> viewModel.setFeaturedHomeItem(item) },
                         onToggleOnly4kFilter = { viewModel.toggleOnly4kFilter() },
                         onQuickBrowse4k = { viewModel.quickSearch4k() },
+                        onSurpriseMe = { viewModel.playSurpriseMe() },
                         onApplyLabelCombo = { combo -> viewModel.applyLabelCombo(combo) },
                         onOpenVideo = { item -> viewModel.openVideoDetails(item) },
                         onPlayVideo = { item -> viewModel.playVideo(item) },
@@ -295,6 +296,8 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                     VideoDetailsScreen(
                         item = state.selectedVideo,
                         isFavorite = state.selectedVideoIsFavorite,
+                        inWatchLater = state.selectedVideoInWatchLater,
+                        resumePositionMs = state.selectedVideoResumeMs,
                         supportsPlayback = state.selectedVideoSupportsPlayback,
                         playbackPreview = state.selectedVideoPlayback,
                         preloadStatus = preloadStatus,
@@ -304,14 +307,23 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         onPlayNow = { candidate ->
                             state.selectedVideo?.let { viewModel.playVideo(it, candidate) }
                         },
+                        onPlayFromStart = {
+                            state.selectedVideo?.let {
+                                viewModel.playVideoFromStart(it, state.selectedVideoPlayback?.selectedCandidate)
+                            }
+                        },
                         onPreloadMore = { viewModel.preloadSelectedVideoMore() },
                         onToggleFavorite = {
                             state.selectedVideo?.let { viewModel.toggleFavorite(it) }
+                        },
+                        onToggleWatchLater = {
+                            state.selectedVideo?.let { viewModel.toggleWatchLater(it) }
                         },
                         onHideVideo = {
                             state.selectedVideo?.let { viewModel.hideVideo(it) }
                         },
                         onSearchTag = { tag -> viewModel.searchByTag(tag) },
+                        onBlockTag = { tag -> viewModel.blockTagFromDetails(tag) },
                         onRefreshDetails = { viewModel.refreshSelectedVideoDetails() },
                         onBack = { viewModel.navigateBack() }
                     )
@@ -325,6 +337,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         onPlayNext = { viewModel.playNextInQueue() },
                         autoPlayNextEnabled = state.autoPlayNextEnabled,
                         isFavorite = state.selectedVideoIsFavorite,
+                        hwCodecSummary = state.hwCodecSummary,
                         onToggleFavorite = {
                             state.selectedVideo?.let { viewModel.toggleFavorite(it) }
                         }
@@ -334,6 +347,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                 HarborScreen.FAVORITES -> {
                     FavoritesScreen(
                         favorites = state.favorites,
+                        watchLater = state.watchLater,
                         watchHistory = state.watchHistory,
                         isPrivateSession = state.isPrivateSession,
                         previewEnabled = state.focusPreviewEnabled,
@@ -341,6 +355,9 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.FAVORITES, key) },
                         onOpenVideo = { item -> viewModel.openVideoDetails(item) },
                         onRemoveFavorite = { item -> viewModel.toggleFavorite(item) },
+                        onPlayWatchLaterQueue = { viewModel.playWatchLaterQueue() },
+                        onRemoveWatchLater = { item -> viewModel.toggleWatchLater(item) },
+                        onClearWatchLater = { viewModel.clearWatchLater() },
                         onRemoveHistoryItem = { compositeId -> viewModel.removeWatchHistoryItem(compositeId) }
                     )
                 }
@@ -350,6 +367,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         registeredSources = state.registeredSources,
                         bundledDefinitions = state.bundledDefinitions,
                         magicPhProfiles = state.magicPhCatalog,
+                        sourceHealthMap = state.sourceHealthMap,
                         statusMessage = state.statusMessage,
                         errorMessage = state.errorMessage,
                         lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.SOURCES],
@@ -414,7 +432,10 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         mediaCacheLimitMb = state.mediaCacheLimitMb,
                         mediaCacheUsedBytes = state.mediaCacheUsedBytes,
                         mediaCacheMaxBytes = state.mediaCacheMaxBytes,
+                        thumbCacheUsedBytes = state.thumbCacheUsedBytes,
+                        httpCacheUsedBytes = state.httpCacheUsedBytes,
                         availableStorageBytes = state.availableStorageBytes,
+                        backupExists = state.backupExists,
                         hwCodecSummary = state.hwCodecSummary,
                         statusMessage = state.statusMessage,
                         onTogglePrivateSession = { enabled -> viewModel.togglePrivateSession(enabled) },
@@ -427,6 +448,8 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         onToggleAvoidRepeats = { enabled -> viewModel.setAvoidRepeatsEnabled(enabled) },
                         onClearHiddenVideos = { viewModel.clearHiddenVideos() },
                         onResetTasteStats = { viewModel.resetTasteStats() },
+                        onExportBackup = { viewModel.exportProfileBackup() },
+                        onRestoreBackup = { viewModel.restoreProfileBackup() },
                         onToggleAllowLan = { allow -> viewModel.setAllowLanSources(allow) },
                         onToggleHistoryEnabled = { enabled -> viewModel.setHistoryEnabled(enabled) },
                         onToggleOfflineFixtureMode = { enabled -> viewModel.setOfflineFixtureMode(enabled) },

@@ -50,6 +50,7 @@ import com.harbor.tv.BundledDefinitionSummary
 import com.harbor.tv.core.model.DefinitionLifecycleState
 import com.harbor.tv.core.model.MagicPhWebsiteProfile
 import com.harbor.tv.core.model.SourceDiagnosticsReport
+import com.harbor.tv.core.model.SourceRuntimeHealth
 import com.harbor.tv.core.tvui.HarborColors
 import com.harbor.tv.core.tvui.TvActionButton
 import com.harbor.tv.core.tvui.TvButtonTone
@@ -70,6 +71,7 @@ fun SourcesScreen(
     registeredSources: List<SourceRegistry.RegisteredSource>,
     bundledDefinitions: List<BundledDefinitionSummary>,
     magicPhProfiles: List<MagicPhWebsiteProfile>,
+    sourceHealthMap: Map<String, SourceRuntimeHealth> = emptyMap(),
     statusMessage: String?,
     errorMessage: String?,
     lastFocusedKey: String?,
@@ -251,11 +253,42 @@ fun SourcesScreen(
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        StatusPillBadge(
-                            label = state.name.replace('_', ' '),
-                            icon = stateIcon,
-                            color = stateColor
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            sourceHealthMap[src.record.sourceId]?.let { health ->
+                                val healthColor = when {
+                                    health.isHealthy -> HarborColors.SuccessGreen
+                                    state == DefinitionLifecycleState.BROKEN -> HarborColors.DangerRed
+                                    else -> HarborColors.WarningAmber
+                                }
+                                val healthLabel = if (health.isHealthy) {
+                                    buildString {
+                                        append("Healthy")
+                                        health.lastLatencyMs?.let { append(" • ${it}ms") }
+                                        if (health.lastItemCount > 0) append(" • ${health.lastItemCount} items")
+                                    }
+                                } else {
+                                    buildString {
+                                        append("Issue")
+                                        health.lastError?.takeIf { it.isNotBlank() }?.let { err ->
+                                            append(" • ${err.take(36)}")
+                                        }
+                                    }
+                                }
+                                StatusPillBadge(
+                                    label = healthLabel,
+                                    icon = if (health.isHealthy) Icons.Rounded.CheckCircle else Icons.Rounded.Warning,
+                                    color = healthColor
+                                )
+                            }
+                            StatusPillBadge(
+                                label = state.name.replace('_', ' '),
+                                icon = stateIcon,
+                                color = stateColor
+                            )
+                        }
                     }
 
                     FlowRow(

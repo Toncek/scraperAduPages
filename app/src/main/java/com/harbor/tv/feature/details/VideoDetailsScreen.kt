@@ -48,12 +48,14 @@ import com.harbor.tv.core.model.LiveStatus
 import com.harbor.tv.core.model.PlaybackCandidate
 import com.harbor.tv.core.model.PlaybackResolutionResult
 import com.harbor.tv.core.model.TagConfidence
+import com.harbor.tv.core.model.TagPreferenceState
 import com.harbor.tv.core.tvui.HarborColors
 import com.harbor.tv.core.tvui.TvActionButton
 import com.harbor.tv.core.tvui.TvButtonTone
 import com.harbor.tv.core.tvui.TvStatusBanner
 import com.harbor.tv.core.tvui.TvTagChip
 import com.harbor.tv.core.tvui.formatDuration
+import com.harbor.tv.core.tvui.formatDurationMs
 import com.harbor.tv.core.tvui.formatTagForDisplay
 import com.harbor.tv.core.tvui.resolveQualityBadge
 import com.harbor.tv.feature.player.PreloadState
@@ -71,6 +73,8 @@ private data class QualityChipEntry(
 fun VideoDetailsScreen(
     item: CatalogItem?,
     isFavorite: Boolean,
+    inWatchLater: Boolean = false,
+    resumePositionMs: Long = 0L,
     supportsPlayback: Boolean,
     playbackPreview: PlaybackResolutionResult?,
     preloadStatus: PreloadStatus = PreloadStatus(),
@@ -78,12 +82,15 @@ fun VideoDetailsScreen(
     isLoading: Boolean,
     errorMessage: String?,
     onPlayNow: (PlaybackCandidate?) -> Unit,
+    onPlayFromStart: () -> Unit = {},
     onPreloadMore: () -> Unit = {},
     onToggleFavorite: () -> Unit,
+    onToggleWatchLater: () -> Unit = {},
     onHideVideo: () -> Unit = {},
     onRefreshDetails: () -> Unit,
     onBack: () -> Unit,
     onSearchTag: (String) -> Unit = {},
+    onBlockTag: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (item == null) {
@@ -106,6 +113,7 @@ fun VideoDetailsScreen(
 
     val primaryFocus = remember { FocusRequester() }
     var showTechnicalMetadata by remember(item.compositeId) { mutableStateOf(false) }
+    var blockTagMode by remember(item.compositeId) { mutableStateOf(false) }
 
     LaunchedEffect(item.compositeId) {
         runCatching { primaryFocus.requestFocus() }
@@ -274,17 +282,34 @@ fun VideoDetailsScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        val hasResume = supportsPlayback && resumePositionMs >= 10_000L
                         TvActionButton(
-                            label = if (supportsPlayback) "Play Now" else "Playback Unavailable",
+                            label = when {
+                                !supportsPlayback -> "Playback Unavailable"
+                                hasResume -> "Resume (${formatDurationMs(resumePositionMs)})"
+                                else -> "Play Now"
+                            },
                             tone = if (supportsPlayback) TvButtonTone.PRIMARY else TvButtonTone.SECONDARY,
                             enabled = supportsPlayback,
                             focusRequester = primaryFocus,
                             onClick = { onPlayNow(playbackPreview?.selectedCandidate) }
                         )
+                        if (hasResume) {
+                            TvActionButton(
+                                label = "Start Over",
+                                tone = TvButtonTone.SECONDARY,
+                                onClick = onPlayFromStart
+                            )
+                        }
                         TvActionButton(
                             label = if (isFavorite) "Saved" else "Favorite",
                             tone = if (isFavorite) TvButtonTone.ACCENT else TvButtonTone.SECONDARY,
                             onClick = onToggleFavorite
+                        )
+                        TvActionButton(
+                            label = if (inWatchLater) "In Queue" else "+ Watch Later",
+                            tone = if (inWatchLater) TvButtonTone.ACCENT else TvButtonTone.SECONDARY,
+                            onClick = onToggleWatchLater
                         )
                         if (supportsPlayback && !isPrivateSession && playbackPreview != null) {
                             TvActionButton(
@@ -364,15 +389,27 @@ fun VideoDetailsScreen(
             }
         }
 
-        // Clean clickable tags
+        // Clean clickable tags (Search or Block mode)
         if (clickableTags.isNotEmpty()) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "Tags",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = HarborColors.TextPrimary
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Tags",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = HarborColors.TextPrimary
+                        )
+                        TvTagChip(
+                            label = if (blockTagMode) "Tap Tag: Block" else "Tap Tag: Search",
+                            selected = blockTagMode,
+                            preferenceState = if (blockTagMode) TagPreferenceState.EXCLUDED else null,
+                            onClick = { blockTagMode = !blockTagMode }
+                        )
+                    }
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -380,7 +417,14 @@ fun VideoDetailsScreen(
                         clickableTags.forEach { cleanTag ->
                             TvTagChip(
                                 label = cleanTag,
-                                onClick = { onSearchTag(cleanTag) }
+                                preferenceState = if (blockTagMode) TagPreferenceState.EXCLUDED else null,
+                                onClick = {
+                                    if (blockTagMode) {
+                                        onBlockTag(cleanTag)
+                                    } else {
+                                        onSearchTag(cleanTag)
+                                    }
+                                }
                             )
                         }
                     }

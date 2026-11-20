@@ -66,7 +66,10 @@ fun SettingsScreen(
     mediaCacheLimitMb: Int = 1536,
     mediaCacheUsedBytes: Long = 0L,
     mediaCacheMaxBytes: Long = 1536L * 1024L * 1024L,
+    thumbCacheUsedBytes: Long = 0L,
+    httpCacheUsedBytes: Long = 0L,
     availableStorageBytes: Long = 0L,
+    backupExists: Boolean = false,
     hwCodecSummary: String = "",
     statusMessage: String?,
     onTogglePrivateSession: (Boolean) -> Unit,
@@ -77,6 +80,8 @@ fun SettingsScreen(
     onToggleAvoidRepeats: (Boolean) -> Unit = {},
     onClearHiddenVideos: () -> Unit = {},
     onResetTasteStats: () -> Unit = {},
+    onExportBackup: () -> Unit = {},
+    onRestoreBackup: () -> Unit = {},
     onToggleAllowLan: (Boolean) -> Unit,
     onToggleHistoryEnabled: (Boolean) -> Unit,
     onToggleOfflineFixtureMode: (Boolean) -> Unit,
@@ -260,6 +265,8 @@ fun SettingsScreen(
                 val safeMaxBytes = mediaCacheMaxBytes.coerceAtLeast(1L)
                 val usedFraction = (mediaCacheUsedBytes.toFloat() / safeMaxBytes.toFloat()).coerceIn(0f, 1f)
                 val usedMb = mediaCacheUsedBytes.toDouble() / (1024.0 * 1024.0)
+                val thumbMb = thumbCacheUsedBytes.toDouble() / (1024.0 * 1024.0)
+                val httpMb = httpCacheUsedBytes.toDouble() / (1024.0 * 1024.0)
                 val maxGb = safeMaxBytes.toDouble() / (1024.0 * 1024.0 * 1024.0)
                 val freeGb = availableStorageBytes.toDouble() / (1024.0 * 1024.0 * 1024.0)
 
@@ -281,9 +288,12 @@ fun SettingsScreen(
                         )
                         Text(
                             text = String.format(
-                                "%.1f MB used / %.2f GB limit • %.2f GB free on TV",
+                                "%.1f MB / %.2f GB limit • Videos: %.1f MB • Thumbs: %.1f MB • HTTP: %.1f MB • Free TV Space: %.2f GB",
                                 usedMb,
                                 maxGb,
+                                usedMb,
+                                thumbMb,
+                                httpMb,
                                 freeGb
                             ),
                             style = MaterialTheme.typography.bodyMedium,
@@ -464,7 +474,28 @@ fun SettingsScreen(
                                 onClick = onClearHiddenVideos
                             )
                         }
+                        TvActionButton(
+                            label = "Export Local Backup",
+                            tone = TvButtonTone.SECONDARY,
+                            enabled = !isPrivateSession,
+                            onClick = onExportBackup
+                        )
+                        TvActionButton(
+                            label = "Restore Backup",
+                            tone = TvButtonTone.ACCENT,
+                            enabled = backupExists && !isPrivateSession,
+                            onClick = onRestoreBackup
+                        )
                     }
+                    Text(
+                        text = if (isPrivateSession) {
+                            "Local backup export and restore are disabled during Private Session mode."
+                        } else {
+                            "Local backups save preferences, taste stats, favorites, and Watch Later (PINs and cookies are never exported)."
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = HarborColors.TextSecondary
+                    )
                 }
             }
 

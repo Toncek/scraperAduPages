@@ -12,6 +12,8 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -64,6 +66,7 @@ import com.harbor.tv.core.tvui.TvStatusBanner
 import com.harbor.tv.core.tvui.TvTagChip
 import com.harbor.tv.core.tvui.formatDurationMs
 import kotlinx.coroutines.delay
+import java.util.Locale
 
 private enum class PlayerPanel {
     NONE,
@@ -72,6 +75,7 @@ private enum class PlayerPanel {
 }
 
 @OptIn(UnstableApi::class)
+@kotlin.OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlayerScreen(
     controller: HarborPlayerController,
@@ -81,6 +85,7 @@ fun PlayerScreen(
     autoPlayNextEnabled: Boolean = true,
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
+    hwCodecSummary: String = "",
     modifier: Modifier = Modifier
 ) {
     val uiState by controller.uiState.collectAsState()
@@ -88,6 +93,7 @@ fun PlayerScreen(
     var activePanel by remember { mutableStateOf(PlayerPanel.NONE) }
     var lastInteractionTick by remember { mutableStateOf(0L) }
     var timelineFocused by remember { mutableStateOf(false) }
+    var showStats by remember { mutableStateOf(false) }
     var upNextCancelled by remember(uiState.sourceItemId) { mutableStateOf(false) }
     var upNextCountdownSec by remember(uiState.sourceItemId, uiState.isEnded) { mutableIntStateOf(5) }
 
@@ -99,6 +105,8 @@ fun PlayerScreen(
     val showUpNextOverlay = uiState.isEnded &&
         uiState.hasNextInQueue &&
         autoPlayNextEnabled &&
+        !uiState.isLooping &&
+        uiState.sleepTimerMode != SleepTimerMode.END_OF_VIDEO &&
         uiState.errorMessage == null &&
         !upNextCancelled
 
@@ -399,6 +407,30 @@ fun PlayerScreen(
                                 )
                             }
                         }
+                        if (uiState.sleepTimerMode != SleepTimerMode.OFF) {
+                            val sleepText = when {
+                                uiState.sleepTimerMode == SleepTimerMode.END_OF_VIDEO -> "Sleep: End"
+                                uiState.sleepTimerRemainingSec != null -> {
+                                    val rem = uiState.sleepTimerRemainingSec ?: 0
+                                    "Sleep: ${rem / 60}m ${rem % 60}s"
+                                }
+                                else -> "Sleep: ${uiState.sleepTimerMode.label}"
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(HarborColors.WarningAmber.copy(alpha = 0.22f))
+                                    .border(1.dp, HarborColors.WarningAmber, RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = sleepText,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = HarborColors.WarningAmber,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                         if (uiState.isPrivateSession) {
                             Box(
                                 modifier = Modifier
@@ -530,12 +562,12 @@ fun PlayerScreen(
                         }
                     }
 
-                    if (uiState.isSeekable && uiState.durationMs >= 180_000L) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        if (uiState.isSeekable && uiState.durationMs >= 180_000L) {
                             TvTagChip(
                                 label = "-60s",
                                 onClick = {
@@ -572,6 +604,42 @@ fun PlayerScreen(
                                 }
                             )
                         }
+                        TvTagChip(
+                            label = if (uiState.isMuted) "Unmute" else "Mute",
+                            selected = uiState.isMuted,
+                            onClick = {
+                                controller.toggleMute()
+                                bumpInteraction()
+                            }
+                        )
+                        TvTagChip(
+                            label = if (uiState.isLooping) "Loop: ON" else "Loop",
+                            selected = uiState.isLooping,
+                            onClick = {
+                                controller.toggleLoop()
+                                bumpInteraction()
+                            }
+                        )
+                        TvTagChip(
+                            label = if (uiState.sleepTimerMode == SleepTimerMode.OFF) {
+                                "Sleep"
+                            } else {
+                                "Sleep: ${uiState.sleepTimerMode.label}"
+                            },
+                            selected = uiState.sleepTimerMode != SleepTimerMode.OFF,
+                            onClick = {
+                                controller.cycleSleepTimer()
+                                bumpInteraction()
+                            }
+                        )
+                        TvTagChip(
+                            label = if (showStats) "Stats: ON" else "Stats",
+                            selected = showStats,
+                            onClick = {
+                                showStats = !showStats
+                                bumpInteraction()
+                            }
+                        )
                     }
 
                     Row(
@@ -827,6 +895,65 @@ fun PlayerScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        if (showStats) {
+            val bufferAheadSec = ((uiState.bufferedPositionMs - uiState.currentPositionMs).coerceAtLeast(0L)) / 1000.0
+            val resText = if (uiState.decodedWidth > 0 && uiState.decodedHeight > 0) {
+                val fpsText = if (uiState.decodedFrameRate >= 1f) {
+                    String.format(Locale.US, " @ %.1ffps", uiState.decodedFrameRate)
+                } else {
+                    ""
+                }
+                "${uiState.decodedWidth}x${uiState.decodedHeight}$fpsText"
+            } else {
+                "Detecting..."
+            }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 36.dp, top = 112.dp)
+                    .width(380.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xD9070B14))
+                    .border(1.dp, HarborColors.FocusCyan.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "Stats for Nerds",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = HarborColors.FocusCyan,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Resolution: $resText",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = HarborColors.TextPrimary
+                )
+                Text(
+                    text = "Codecs: V=${uiState.videoCodec ?: "unknown"} • A=${uiState.audioCodec ?: "unknown"}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = HarborColors.TextSecondary
+                )
+                Text(
+                    text = "Protocol: ${uiState.activeCandidate?.streamType?.name ?: "unknown"} • Buffer: ${String.format(Locale.US, "%.1fs", bufferAheadSec)}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = HarborColors.TextSecondary
+                )
+                Text(
+                    text = "ROM Cache Used: ${String.format(Locale.US, "%.1f MB", uiState.mediaCacheUsedMb)}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = HarborColors.AccentTeal
+                )
+                if (hwCodecSummary.isNotBlank()) {
+                    Text(
+                        text = hwCodecSummary,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = HarborColors.TextSecondary
+                    )
                 }
             }
         }

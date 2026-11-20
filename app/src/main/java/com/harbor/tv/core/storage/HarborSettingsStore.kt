@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.harbor.tv.core.model.CatalogItem
 import com.harbor.tv.core.model.PreferenceConfig
 import com.harbor.tv.core.model.TagPreferenceState
 import com.harbor.tv.core.model.UnknownMetadataMode
@@ -69,8 +70,13 @@ class HarborSettingsStore(
             return stringPreferencesKey("profile_recent_searches_${profileId.trim()}")
         }
 
+        private fun watchLaterKey(profileId: String): Preferences.Key<String> {
+            return stringPreferencesKey("profile_watch_later_${profileId.trim()}")
+        }
+
         private const val MAX_HIDDEN_ITEM_IDS = 500
         private const val MAX_RECENT_SEARCHES = 8
+        private const val MAX_WATCH_LATER_ITEMS = 50
     }
 
     val activeProfileIdFlow: Flow<String> = dataStore.data.map { prefs ->
@@ -259,6 +265,49 @@ class HarborSettingsStore(
             arr.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf { s -> s.isNotEmpty() } }
                 .distinctBy { it.lowercase() }
                 .take(MAX_RECENT_SEARCHES)
+        }.getOrDefault(emptyList())
+    }
+
+    fun observeWatchLater(profileId: String): Flow<List<CatalogItem>> {
+        val key = watchLaterKey(profileId)
+        return dataStore.data.map { prefs ->
+            decodeWatchLater(prefs[key])
+        }
+    }
+
+    suspend fun getWatchLater(profileId: String): List<CatalogItem> {
+        return observeWatchLater(profileId).first()
+    }
+
+    suspend fun saveWatchLater(profileId: String, items: List<CatalogItem>) {
+        val key = watchLaterKey(profileId)
+        val deduped = items.distinctBy { it.compositeId }.take(MAX_WATCH_LATER_ITEMS)
+        val serialized = buildJsonArray {
+            deduped.forEach { item ->
+                add(Json.parseToJsonElement(CatalogItemJsonCodec.encode(item)))
+            }
+        }.toString()
+        dataStore.edit { prefs ->
+            prefs[key] = serialized
+        }
+    }
+
+    suspend fun clearWatchLater(profileId: String) {
+        val key = watchLaterKey(profileId)
+        dataStore.edit { prefs ->
+            prefs.remove(key)
+        }
+    }
+
+    private fun decodeWatchLater(rawJson: String?): List<CatalogItem> {
+        if (rawJson.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val arr = Json.parseToJsonElement(rawJson) as? JsonArray ?: return emptyList()
+            arr.mapNotNull { elem ->
+                CatalogItemJsonCodec.decode(elem.toString())
+            }
+                .distinctBy { it.compositeId }
+                .take(MAX_WATCH_LATER_ITEMS)
         }.getOrDefault(emptyList())
     }
 }

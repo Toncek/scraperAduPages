@@ -184,6 +184,14 @@ data class UserTasteProfile(
     val totalInteractions: Int = 0
 )
 
+data class SourceRuntimeHealth(
+    val sourceId: String,
+    val lastLatencyMs: Long? = null,
+    val lastItemCount: Int = 0,
+    val lastError: String? = null,
+    val isHealthy: Boolean = true
+)
+
 data class SourceDiagnosticsReport(
     val sourceId: String,
     val activeVersion: String,

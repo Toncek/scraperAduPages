@@ -60,6 +60,14 @@ import java.io.InputStream
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
+enum class SleepTimerMode(val label: String, val durationSeconds: Int?) {
+    OFF("Off", null),
+    MIN_15("15m", 900),
+    MIN_30("30m", 1800),
+    MIN_60("60m", 3600),
+    END_OF_VIDEO("End", null)
+}
+
 data class MediaCacheStats(
     val usedBytes: Long,
     val maxBytes: Long,
@@ -83,7 +91,12 @@ data class PlayerUiState(
     val isEnded: Boolean = false,
     val playbackSpeed: Float = 1.0f,
     val aspectResizeMode: Int = 0,
+    val isMuted: Boolean = false,
+    val isLooping: Boolean = false,
+    val sleepTimerMode: SleepTimerMode = SleepTimerMode.OFF,
+    val sleepTimerRemainingSec: Int? = null,
     val currentPositionMs: Long = 0L,
+    val bufferedPositionMs: Long = 0L,
     val durationMs: Long = 0L,
     val isSeekable: Boolean = false,
     val isLive: Boolean = false,
@@ -92,6 +105,8 @@ data class PlayerUiState(
     val decodedHeight: Int = 0,
     val decodedFrameRate: Float = 0f,
     val videoCodec: String? = null,
+    val audioCodec: String? = null,
+    val mediaCacheUsedMb: Double = 0.0,
     val hasNextInQueue: Boolean = false,
     val hasPreviousInQueue: Boolean = false,
     val nextItemTitle: String? = null,
@@ -234,13 +249,20 @@ class HarborPlayerController(
             val buffering = playbackState == Player.STATE_BUFFERING
             val ended = playbackState == Player.STATE_ENDED
             val duration = player.duration.takeIf { it != C.TIME_UNSET && it >= 0L } ?: 0L
+            val endTimerTriggered = ended && _uiState.value.sleepTimerMode == SleepTimerMode.END_OF_VIDEO
+            if (endTimerTriggered) {
+                player.pause()
+                player.playWhenReady = false
+            }
             _uiState.update {
                 it.copy(
                     isBuffering = buffering,
                     isEnded = ended,
                     durationMs = duration,
                     isSeekable = player.isCurrentMediaItemSeekable,
-                    isLive = player.isCurrentMediaItemLive
+                    isLive = player.isCurrentMediaItemLive,
+                    sleepTimerMode = if (endTimerTriggered) SleepTimerMode.OFF else it.sleepTimerMode,
+                    sleepTimerRemainingSec = if (endTimerTriggered) null else it.sleepTimerRemainingSec
                 )
             }
             if (ended) {
@@ -309,6 +331,11 @@ class HarborPlayerController(
             isPrivateSession = isPrivateSession,
             playbackSpeed = 1.0f,
             aspectResizeMode = prevQueueState.aspectResizeMode,
+            isMuted = prevQueueState.isMuted,
+            isLooping = prevQueueState.isLooping,
+            sleepTimerMode = prevQueueState.sleepTimerMode,
+            sleepTimerRemainingSec = prevQueueState.sleepTimerRemainingSec,
+            mediaCacheUsedMb = prevQueueState.mediaCacheUsedMb,
             hasNextInQueue = prevQueueState.hasNextInQueue,
             hasPreviousInQueue = prevQueueState.hasPreviousInQueue,
             nextItemTitle = prevQueueState.nextItemTitle,
@@ -390,6 +417,30 @@ class HarborPlayerController(
 
     fun cycleAspectResizeMode() {
         _uiState.update { it.copy(aspectResizeMode = (it.aspectResizeMode + 1) % 3) }
+    }
+
+    fun toggleMute() {
+        val nextMuted = !_uiState.value.isMuted
+        player.volume = if (nextMuted) 0f else 1f
+        _uiState.update { it.copy(isMuted = nextMuted) }
+    }
+
+    fun toggleLoop() {
+        val nextLoop = !_uiState.value.isLooping
+        player.repeatMode = if (nextLoop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+        _uiState.update { it.copy(isLooping = nextLoop) }
+    }
+
+    fun cycleSleepTimer() {
+        val entries = SleepTimerMode.entries
+        val current = _uiState.value.sleepTimerMode
+        val next = entries[(current.ordinal + 1) % entries.size]
+        _uiState.update {
+            it.copy(
+                sleepTimerMode = next,
+                sleepTimerRemainingSec = next.durationSeconds
+            )
+        }
     }
 
     fun selectAudioTrack(option: PlayerTrackOption) {
@@ -701,6 +752,7 @@ class HarborPlayerController(
         var selectedVideoHeight = 0
         var selectedFrameRate = 0f
         var selectedCodec: String? = null
+        var selectedAudioCodec: String? = null
 
         tracks.groups.forEachIndexed { groupIdx, group ->
             for (trackIdx in 0 until group.length) {
@@ -711,6 +763,9 @@ class HarborPlayerController(
                     if (format.height > 0) selectedVideoHeight = format.height
                     if (format.frameRate > 0f) selectedFrameRate = format.frameRate
                     selectedCodec = format.codecs ?: format.sampleMimeType
+                }
+                if (group.type == C.TRACK_TYPE_AUDIO && group.isTrackSelected(trackIdx)) {
+                    selectedAudioCodec = format.codecs ?: format.sampleMimeType
                 }
                 val label = format.label?.takeIf { it.isNotBlank() }
                     ?: format.language?.takeIf { it.isNotBlank() }
@@ -737,7 +792,8 @@ class HarborPlayerController(
                 decodedWidth = if (selectedVideoWidth > 0) selectedVideoWidth else current.decodedWidth,
                 decodedHeight = if (selectedVideoHeight > 0) selectedVideoHeight else current.decodedHeight,
                 decodedFrameRate = if (selectedFrameRate > 0f) selectedFrameRate else current.decodedFrameRate,
-                videoCodec = selectedCodec ?: current.videoCodec
+                videoCodec = selectedCodec ?: current.videoCodec,
+                audioCodec = selectedAudioCodec ?: current.audioCodec
             )
         }
     }
@@ -746,15 +802,45 @@ class HarborPlayerController(
         positionTickerJob?.cancel()
         positionTickerJob = scope.launch {
             while (isActive) {
+                val cacheUsedMb = (sharedMediaCache?.cacheSpace ?: 0L) / (1024.0 * 1024.0)
                 if (player.playbackState != Player.STATE_IDLE) {
                     val pos = player.currentPosition.coerceAtLeast(0L)
+                    val bufferedPos = player.bufferedPosition.coerceAtLeast(0L)
                     val dur = player.duration.takeIf { it != C.TIME_UNSET && it >= 0L } ?: 0L
+                    val currentState = _uiState.value
+                    var nextTimerMode = currentState.sleepTimerMode
+                    var nextTimerRemaining = currentState.sleepTimerRemainingSec
+                    var timerExpired = false
+
+                    if (player.isPlaying &&
+                        currentState.sleepTimerMode.durationSeconds != null &&
+                        nextTimerRemaining != null
+                    ) {
+                        if (nextTimerRemaining <= 1) {
+                            timerExpired = true
+                            nextTimerMode = SleepTimerMode.OFF
+                            nextTimerRemaining = null
+                        } else {
+                            nextTimerRemaining -= 1
+                        }
+                    }
+
+                    if (timerExpired) {
+                        player.pause()
+                        player.playWhenReady = false
+                        persistProgressIfAllowed(force = true)
+                    }
+
                     _uiState.update {
                         it.copy(
                             currentPositionMs = pos,
+                            bufferedPositionMs = bufferedPos,
                             durationMs = dur,
                             isSeekable = player.isCurrentMediaItemSeekable,
-                            isLive = player.isCurrentMediaItemLive
+                            isLive = player.isCurrentMediaItemLive,
+                            mediaCacheUsedMb = cacheUsedMb,
+                            sleepTimerMode = nextTimerMode,
+                            sleepTimerRemainingSec = nextTimerRemaining
                         )
                     }
                     if (!quarterProgressFired &&
@@ -767,6 +853,8 @@ class HarborPlayerController(
                         onQuarterProgressReachedCallback?.invoke()
                     }
                     persistProgressIfAllowed(force = false)
+                } else {
+                    _uiState.update { it.copy(mediaCacheUsedMb = cacheUsedMb) }
                 }
                 delay(1000L)
             }

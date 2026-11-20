@@ -18,6 +18,8 @@ import com.harbor.tv.core.network.HttpResponseData
 import com.harbor.tv.core.network.HttpTransport
 import com.harbor.tv.core.security.AddressSafetyValidator
 import com.harbor.tv.core.security.CredentialRedactor
+import com.harbor.tv.core.storage.HarborBackupManager
+import com.harbor.tv.core.storage.HarborBackupPayload
 import com.harbor.tv.domain.catalog.CatalogNormalizer
 import com.harbor.tv.domain.playback.PlaybackResolver
 import com.harbor.tv.domain.preferences.PreferenceFilterEngine
@@ -640,6 +642,135 @@ class HarborAcceptanceTest {
             listOf(freshMatch.compositeId, freshNeutral.compositeId, item4kAmateur1.compositeId),
             ranked.map { it.compositeId }
         )
+    }
+
+    @Test
+    fun backupManager_roundTripsNonSecretProfileStateWithoutCredentials() {
+        val favItem = CatalogItem(
+            sourceId = "src1",
+            sourceItemId = "fav1",
+            sourcePageUrl = "https://video.example.org/watch/fav1",
+            title = "Favorite 4K Video",
+            durationSeconds = 600,
+            sourceTags = listOf("4K", "Nature"),
+            canonicalTags = listOf("quality.4k", "topic.nature"),
+            thumbnailReferences = listOf("https://images.example.org/fav1.jpg"),
+            maxQualityLabel = "4K",
+            maxResolutionHeight = 2160
+        )
+        val watchLaterItem = CatalogItem(
+            sourceId = "src2",
+            sourceItemId = "wl1",
+            sourcePageUrl = "https://video.example.org/watch/wl1",
+            title = "Watch Later HD Video",
+            durationSeconds = 900,
+            sourceTags = listOf("1080p", "Documentary"),
+            thumbnailReferences = listOf("https://images.example.org/wl1.jpg"),
+            maxQualityLabel = "1080p",
+            maxResolutionHeight = 1080
+        )
+        val payload = HarborBackupPayload(
+            schemaVersion = 1,
+            exportedAtEpochMs = 1_750_000_000_000L,
+            preferences = PreferenceConfig(
+                profileId = "original",
+                tagPreferences = mapOf(
+                    "4k" to TagPreferenceState.PREFERRED,
+                    "spam" to TagPreferenceState.EXCLUDED
+                ),
+                minDurationSeconds = 120,
+                minResolutionHeight = 480,
+                hiddenItemIds = setOf("src1::h1")
+            ),
+            tasteProfile = UserTasteProfile(
+                profileId = "original",
+                labelScores = mapOf("4k" to 6.0, "nature" to 3.0),
+                pairScores = mapOf("4k::nature" to 3.0),
+                sourceScores = mapOf("src1" to 4.5),
+                seenItemIds = listOf("src1::fav1"),
+                totalInteractions = 3
+            ),
+            favorites = listOf(favItem),
+            watchLater = listOf(watchLaterItem)
+        )
+
+        val encoded = HarborBackupManager.encodeBackupJson(payload)
+        assertFalse(encoded.contains("pinHash", ignoreCase = true))
+        assertFalse(encoded.contains("cookie", ignoreCase = true))
+
+        val restored = HarborBackupManager.decodeBackupJson(encoded, targetProfileId = "restored")
+        assertEquals("restored", restored.preferences.profileId)
+        assertEquals("restored", restored.tasteProfile.profileId)
+        assertEquals(480, restored.preferences.minResolutionHeight)
+        assertEquals(120, restored.preferences.minDurationSeconds)
+        assertEquals(setOf("src1::h1"), restored.preferences.hiddenItemIds)
+        assertEquals(payload.preferences.tagPreferences, restored.preferences.tagPreferences)
+        assertEquals(payload.tasteProfile.labelScores, restored.tasteProfile.labelScores)
+        assertEquals(payload.tasteProfile.pairScores, restored.tasteProfile.pairScores)
+        assertEquals(payload.tasteProfile.sourceScores, restored.tasteProfile.sourceScores)
+        assertEquals(listOf("src1::fav1"), restored.tasteProfile.seenItemIds)
+        assertEquals(listOf(favItem.compositeId), restored.favorites.map { it.compositeId })
+        assertEquals(listOf(watchLaterItem.compositeId), restored.watchLater.map { it.compositeId })
+    }
+
+    @Test
+    fun tasteEngine_tracksSourceAffinityAndExcludesBlockedTagsBeforeArtwork() {
+        val tasteEngine = UserTasteEngine()
+        var taste = UserTasteProfile(profileId = "affinity-test")
+
+        val favSourceItem = CatalogItem(
+            sourceId = "src-fav",
+            sourceItemId = "v1",
+            sourcePageUrl = "https://video.example.org/watch/v1",
+            title = "Preferred Source Video",
+            sourceTags = listOf("4K", "Scenic"),
+            maxResolutionHeight = 2160
+        )
+        val otherSourceItem = CatalogItem(
+            sourceId = "src-other",
+            sourceItemId = "v2",
+            sourcePageUrl = "https://video.example.org/watch/v2",
+            title = "Other Source Video",
+            sourceTags = listOf("4K", "Scenic"),
+            maxResolutionHeight = 2160
+        )
+
+        taste = tasteEngine.recordInteraction(taste, favSourceItem, weight = 5.0)
+        taste = tasteEngine.recordInteraction(taste, favSourceItem, weight = 3.0)
+        taste = tasteEngine.recordInteraction(taste, otherSourceItem, weight = 1.0)
+
+        assertTrue((taste.sourceScores["src-fav"] ?: 0.0) > (taste.sourceScores["src-other"] ?: 0.0))
+
+        val blockedTagItem = CatalogItem(
+            sourceId = "src-fav",
+            sourceItemId = "blocked-1",
+            sourcePageUrl = "https://video.example.org/watch/blocked-1",
+            title = "Blocked Tag Item",
+            sourceTags = listOf("BlockedTag", "4K"),
+            thumbnailReferences = listOf("https://images.example.org/blocked.jpg"),
+            maxResolutionHeight = 2160
+        )
+        val cleanItem = CatalogItem(
+            sourceId = "src-fav",
+            sourceItemId = "clean-1",
+            sourcePageUrl = "https://video.example.org/watch/clean-1",
+            title = "Clean Item",
+            sourceTags = listOf("4K"),
+            thumbnailReferences = listOf("https://images.example.org/clean.jpg"),
+            maxResolutionHeight = 2160
+        )
+
+        val partition = filterEngine.partitionAndStripRejectedArtwork(
+            items = listOf(blockedTagItem, cleanItem),
+            preferences = PreferenceConfig(
+                tagPreferences = mapOf("blockedtag" to TagPreferenceState.EXCLUDED)
+            ),
+            enabledSourceIds = setOf("src-fav")
+        )
+
+        assertEquals(listOf("clean-1"), partition.eligible.map { it.sourceItemId })
+        assertEquals(listOf("blocked-1"), partition.rejectedWithoutArtwork.map { it.sourceItemId })
+        assertTrue(partition.rejectedWithoutArtwork.all { it.thumbnailReferences.isEmpty() })
     }
 
     @Test
