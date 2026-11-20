@@ -1,0 +1,428 @@
+{
+  "dataset_metadata": {
+    "as_of": "2026-11",
+    "platform_count": 11,
+    "scope": "Publicly documented interfaces, official APIs, bulk feeds, link-generation patterns, disclosed storage/CDN architectures, and Terms of Service constraints",
+    "undisclosed_fields_policy": "Proprietary internal origin topologies, private signing secrets, and undocumented internal APIs are explicitly labeled 'undisclosed'."
+  },
+  "platforms": [
+    {
+      "platform": "Pornhub",
+      "operator": "Aylo (formerly MindGeek)",
+      "business_model": "AVOD Tube Site / Content Partner & Premium Ecosystem",
+      "public_interfaces_and_apis": {
+        "official_api_type": "Webmasters / legacy Hubtraffic JSON endpoints",
+        "authentication": "None documented for public webmaster metadata endpoints; creator uploads require verified account + 2FA",
+        "verified_http_paths": [
+          "GET /webmasters/search (filters include search, category, page, tags[], ordering, period, thumbsize)",
+          "GET /webmasters/categories"
+        ],
+        "documented_webmaster_methods": [
+          "search",
+          "videoById / getVideo",
+          "isVideoActive",
+          "videoEmbedCode",
+          "getDeletedVideos",
+          "categories",
+          "tags (heavy payload; local caching advised)",
+          "pornstars / pornstarsDetailed (20K+ records; local caching advised)"
+        ],
+        "bulk_feeds_and_dumps": {
+          "csv_zip_dump": "https://www.pornhub.com/files/pornhub.com-db.zip (columns: video URL, thumbnail URL, tags, duration, title, embed code)",
+          "added_videos_feed": "https://www.pornhub.com/video/webmasterss",
+          "deleted_videos_feed": "https://www.pornhub.com/files/deleted.csv"
+        },
+        "response_formats": ["JSON", "CSV (ZIP)", "RSS"]
+      },
+      "video_link_generation": {
+        "canonical_watch_url": "https://www.pornhub.com/view_video.php?viewkey=<alphanumeric_viewkey>",
+        "external_syndication_method": "Official HTML <iframe> embed code via Share UI, CSV dump, or webmaster embed-code lookup",
+        "media_playback_protocol": "Adaptive Bitrate (ABR) HLS via dedicated custom player",
+        "raw_stream_url_signing": "Undisclosed in official documentation"
+      },
+      "storage_and_delivery_infrastructure": {
+        "parent_group_disclosed_scale": {
+          "media_storage": "65+ PB across Aylo platforms",
+          "cdn_bandwidth": "4 Tbps across Aylo platforms",
+          "compute_fleet": "1,700 bare metal servers + 2,000 always-running cloud instances",
+          "streaming_volume": "13M+ hours streamed per day; 8,000 avg new videos/day; 67,000 hours encoded/day"
+        },
+        "disclosed_application_stack": [
+          "Nginx",
+          "Varnish",
+          "PHP",
+          "Go",
+          "Node.js",
+          "MySQL",
+          "Vertica",
+          "Memcached / Redis",
+          "ElasticSearch",
+          "Vue.js / Vanilla JS"
+        ],
+        "upload_and_transcoding_specs": {
+          "uploader_url": "https://pornhub.mainhub.com/upload/uploader",
+          "accepted_containers": ["AVI", "WMV", "MP4", "MPG", "MOV"],
+          "file_size_range": "11 MB to 10 GB",
+          "preferred_codecs": ["H.264", "H.265"],
+          "staged_transcoding_window": "24-48 hours (SD available first, then HD/VR up to 2160p)"
+        },
+        "network_and_ad_ecosystem": "Hybrid bare-metal colocation, multi-CDN delivery, cloud synthetic monitoring (AWS WebPageTest), and in-house ad network TrafficJunky"
+      },
+      "terms_and_compliance_constraints": {
+        "embedding_policy": "Free unlimited iframe embedding permitted, including alongside third-party site ads",
+        "prohibitions": "Downloading, copying, altering player/ads, exploiting undocumented endpoints, or unauthorized automated extraction prohibited under Terms of Service",
+        "trust_and_safety_pipeline": "Mandatory uploader/co-performer ID and 18 U.S.C. 2257 consent verification, Safeguard fingerprinting, NGO hash scanning, 100% pre-publication human review"
+      }
+    },
+    {
+      "platform": "RedTube",
+      "operator": "Aylo (formerly MindGeek)",
+      "business_model": "AVOD Tube Site",
+      "public_interfaces_and_apis": {
+        "official_api_type": "Official HTTP GET Query API",
+        "base_url": "https://api.redtube.com/",
+        "authentication": "None documented in public API documentation",
+        "verified_query_methods": [
+          "?data=redtube.Videos.searchVideos (filters: category, page, search, tags[], stars[], thumbsize, ordering, period)",
+          "?data=redtube.Videos.getDeletedVideos (supports page parameter)",
+          "?data=redtube.Categories.getCategoriesList"
+        ],
+        "additional_documented_methods": [
+          "getVideoById",
+          "isVideoActive",
+          "getVideoEmbedCode",
+          "getTagList",
+          "getStarList",
+          "getStarDetailedList"
+        ],
+        "rate_limiting": "No explicit quota documented; official PHP samples throttle paginated loops (20 videos/page) with sleep(2)",
+        "response_formats": ["JSON", "XML"]
+      },
+      "video_link_generation": {
+        "embed_url_pattern": "https://embed.redtube.com/?id=<numeric_video_id>",
+        "external_syndication_method": "Official embed_url payload attribute or getVideoEmbedCode method",
+        "media_playback_protocol": "HTTP adaptive streaming via official player",
+        "raw_stream_url_signing": "Undisclosed"
+      },
+      "storage_and_delivery_infrastructure": {
+        "storage_architecture": "Operated within Aylo's shared multi-tube ecosystem (65+ PB, 1,700 bare metal + 2,000 cloud instances)",
+        "observed_cdn_references": "Third-party network monitoring documentation (LogRhythm NetMon) associates RedTube, YouPorn, and Tube8 with contentabc CDN",
+        "internal_origin_topology": "Undisclosed"
+      },
+      "terms_and_compliance_constraints": {
+        "embedding_policy": "Official API and iframe embed integration supported for webmasters",
+        "compliance_controls": "Subject to Aylo's mandatory uploader verification, Safeguard fingerprinting, and pre-publication human moderation"
+      }
+    },
+    {
+      "platform": "YouPorn",
+      "operator": "Aylo (formerly MindGeek)",
+      "business_model": "AVOD Tube Site",
+      "public_interfaces_and_apis": {
+        "official_api_type": "Hubtraffic-family Webmaster API",
+        "authentication": "Public metadata queries via webmaster/partner tooling",
+        "documented_behavior": "Supports single-video lookup by numeric video ID and paginated keyword/tag search returning 20 videos per page",
+        "response_formats": ["JSON / XML (via Hubtraffic-family webmaster integration)"]
+      },
+      "video_link_generation": {
+        "canonical_id_extraction": "Numeric video ID parsed from watch URL (e.g., /12345)",
+        "external_syndication_method": "Official iframe embed player",
+        "raw_stream_url_signing": "Undisclosed"
+      },
+      "storage_and_delivery_infrastructure": {
+        "storage_architecture": "Shared Aylo multi-tube platform infrastructure (multi-tube upload parity with Pornhub and RedTube)",
+        "observed_cdn_references": "Associated with contentabc CDN in third-party network application catalogs",
+        "internal_origin_topology": "Undisclosed"
+      },
+      "terms_and_compliance_constraints": {
+        "embedding_policy": "Supported via official embed players",
+        "compliance_controls": "Covered by Aylo's unified performer verification and pre-publication moderation pipeline"
+      }
+    },
+    {
+      "platform": "Eporner",
+      "operator": "Eporner",
+      "business_model": "HD/4K AVOD Tube Site",
+      "public_interfaces_and_apis": {
+        "official_api_type": "Official RESTful API v2 (API v1 /api_xml/ deprecated)",
+        "base_url": "https://www.eporner.com/api/v2/",
+        "authentication": "No API key required; descriptive User-Agent header requested; CORS Access-Control-Allow-Origin: * enabled",
+        "documented_endpoints": [
+          "GET/POST /api/v2/video/search/ (up to 1,000/page; 100,000 result depth cap on searches/filtered lists; unlimited on unfiltered query=all)",
+          "GET/POST /api/v2/video/id/ (metadata + alive check)",
+          "GET /api/v2/video/removed/ (cursor pagination via since/after; json/xml/txt where txt is ~60% smaller)",
+          "GET /api/v2/video/status/ (batch status check for up to 100 IDs)",
+          "GET /api/v2/categories/",
+          "GET /api/v2/pornstars/",
+          "GET /api/v2/oembed/",
+          "GET /api/v2/openapi/"
+        ],
+        "caching_and_rate_policy": "Sequential requests ('one request at a time'); Cache-Control: 5 min (search), 1 min (video/status/removals), 1 hr (categories/pornstars); RFC 9457 problem+json errors; honor Retry-After on HTTP 503",
+        "bulk_feeds_and_dumps": {
+          "csv_feeds": "Pipe-delimited (ID|URL|Length|Title|Categories|Keywords|Thumbnail|Quality|Models); HD or ALL + Removed lists; thumbs 190x152, 427x240, 640x360; TXT/GZIP/ZIP",
+          "rss_feeds": "RSS 2.0 + media:thumbnail (excludes gay content; built separately and can lag behind live API)"
+        },
+        "response_formats": ["JSON", "XML", "TXT", "CSV", "RSS 2.0"]
+      },
+      "video_link_generation": {
+        "video_id_format": "Case-sensitive 11-character alphanumeric string (e.g., AbCdEfGhIjK)",
+        "embed_url_pattern": "https://www.eporner.com/embed/{id}/",
+        "oembed_support": "Dynamic layout-sized iframe markup via /api/v2/oembed/",
+        "available_quality_tiers": ["240p", "360p", "480p", "720p", "1080p", "1440p", "2160p"],
+        "raw_stream_url_signing": "Undisclosed"
+      },
+      "storage_and_delivery_infrastructure": {
+        "origin_storage_and_cdn": "Undisclosed in official documentation",
+        "delivery_enforcement": "All external playback must pass through Eporner's hosted iframe player"
+      },
+      "terms_and_compliance_constraints": {
+        "mandatory_obligations": [
+          "Prominent link-back to eporner.com video URL on every embedding page",
+          "Daily synchronization with /api/v2/video/removed/ to purge deleted videos",
+          "Strict adherence to regional age-verification and child-protection laws"
+        ],
+        "prohibitions": [
+          "No downloading, copying, or re-hosting raw video files",
+          "No altering, covering, or blocking player ads or notices",
+          "Explicit ban on using API or feeds for AI or machine-learning training, testing, or system building"
+        ]
+      }
+    },
+    {
+      "platform": "XVideos",
+      "operator": "WebGroup Czech Republic, a.s.",
+      "business_model": "AVOD Tube Site / Premium Tier",
+      "public_interfaces_and_apis": {
+        "official_api_type": "No documented public live REST API; distributes daily bulk database exports",
+        "authentication": "None required for public webmaster CSV exports",
+        "bulk_feeds_and_dumps": {
+          "portal_url": "https://info.xvideos.net/db",
+          "full_export": "https://public-assets.xvideos-cdn.com/webmaster-tools/xvideos.com-export-full.csv.zip (.gz) (~7,000,000 videos; ~6-7 GB uncompressed, ~800 MB compressed; updated daily)",
+          "incremental_exports": [
+            "xvideos.com-export-week.csv.zip (.gz)",
+            "xvideos.com-deleted-full.csv.zip (.gz)",
+            "xvideos.com-deleted-week.csv.zip (.gz)",
+            "xvideos.com-export-premium-full.csv.zip (.gz)"
+          ],
+          "deleted_videos_rss": "Dedicated RSS feed referenced in official FAQ",
+          "csv_columns": ["Video URL", "Thumb URL", "Tags", "Duration", "Title", "Embed code"]
+        },
+        "response_formats": ["CSV (ZIP/GZ)", "RSS"]
+      },
+      "video_link_generation": {
+        "external_syndication_method": "Pre-generated HTML embed codes distributed directly in daily CSV exports; no stated cap on embedded video count",
+        "raw_stream_url_signing": "Undisclosed"
+      },
+      "storage_and_delivery_infrastructure": {
+        "observed_cdn_domain": "public-assets.xvideos-cdn.com (hosts webmaster exports)",
+        "origin_storage_and_compute": "Undisclosed by WebGroup Czech Republic"
+      },
+      "terms_and_compliance_constraints": {
+        "embedding_policy": "No restriction on number of videos embedded via official webmaster tools",
+        "prohibitions": "General Terms of Service (Section 2) restrict site use to personal, non-commercial purposes and forbid commercial downloading, copying, or distribution; related WebGroup ToS clauses forbid automated web scrapers"
+      }
+    },
+    {
+      "platform": "xHamster",
+      "operator": "xHamster / Partner Affiliate Network",
+      "business_model": "AVOD Tube Site / Monetized Embed Affiliate Program",
+      "public_interfaces_and_apis": {
+        "official_api_type": "Gated Partner Portal (CSV dumps, embeds, thumbnails, RSS feeds; CMS plugin references to partner API import)",
+        "portal_url": "https://partners.xhamster.com/",
+        "authentication": "Account registration + manual domain approval required prior to accessing export tools",
+        "bulk_feeds_and_dumps": {
+          "csv_export_example": "https://partners.xhamster.com/export/320.csv (pipe-delimited; selectable thumbnail sizes)",
+          "csv_row_schema": "ID|ShortWatchURL|ShortEmbedURL|Title|Duration|Date|SemicolonDelimitedThumbURLs",
+          "other_feeds": "RSS feeds and thumbnail exports via Partner Admin > Content Export"
+        },
+        "response_formats": ["CSV", "RSS"]
+      },
+      "video_link_generation": {
+        "short_watch_url_pattern": "https://xh.video/v/<short_code>",
+        "short_embed_url_pattern": "https://xh.video/e/<short_code>",
+        "thumbnail_cdn_pattern": "http(s)://thumb-v7.xhcdn.com/a/<opaque_token>/<sharded_padded_id>/320x240.<frame>.jpg",
+        "monetized_embed_payouts": "$1.50 per 1,000 unique visitors (HQ countries); $0.40 per 1,000 unique visitors (LQ countries)",
+        "raw_stream_url_signing": "Undisclosed"
+      },
+      "storage_and_delivery_infrastructure": {
+        "observed_cdn_domain": "xhcdn.com (sharded numeric ID directory paths with path tokens)",
+        "origin_storage_and_compute": "Undisclosed"
+      },
+      "terms_and_compliance_constraints": {
+        "partner_prohibitions": [
+          "Clause 2.3.5: No robots, spiders, crawlers, scrapers, or unauthorized automated interfaces",
+          "Clause 2.3.12: No modifying banners, thumbnails, affiliate links, or embedded videos (no blocking external links/related videos or hiding logos)",
+          "Clause 2.3.15: No direct linking (hotlinking) or custom video players",
+          "Clause 2.3.18: Prohibits opening videos/content in unauthorized frames/iframes or sending traffic via redirects"
+        ],
+        "trust_and_safety": "End-user video downloading disabled; mandatory live ID/KYC verification for uploaders; StopNCII.org hash scanning"
+      }
+    },
+    {
+      "platform": "Chaturbate",
+      "operator": "Chaturbate (broadcast ingest infrastructure domain: highwebmedia.com)",
+      "business_model": "Live Interactive Webcam Platform (Token Economy + Affiliates/Whitelabels)",
+      "public_interfaces_and_apis": {
+        "official_api_layers": [
+          {
+            "name": "Public Affiliates Online Rooms API",
+            "endpoints": [
+              "https://chaturbate.com/api/public/affiliates/onlinerooms/",
+              "Legacy/plugin path: affiliates/api/onlinerooms/?format=json&wm=<affiliate_id>"
+            ],
+            "authentication": "None / affiliate ID query parameter (wm=)",
+            "purpose": "Read-only, rate-limited JSON discovery feed of live rooms, viewer counts, tags, gender, region, show status, and preview thumbnails"
+          },
+          {
+            "name": "Official Events API v1.0.0",
+            "endpoint": "https://eventsapi.chaturbate.com/events/:username/:token/",
+            "authentication": "Scoped broadcaster access token generated at /statsapi/authtoken/ (Events API scope; <=1 min revocation)",
+            "transport": "HTTP JSON long-polling (timeout param 0-90s, default 10s; cursor pagination via nextUrl)",
+            "rate_limit": "2,000 requests per minute",
+            "events_supported": [
+              "broadcastStart", "broadcastStop", "chatMessage", "fanclubJoin",
+              "follow", "mediaPurchase", "privateMessage", "roomSubjectChange",
+              "tip", "unfollow", "userEnter", "userLeave"
+            ]
+          },
+          {
+            "name": "Whitelabel & Affiliate Postbacks",
+            "purpose": "Custom HTTPS whitelabel domains, RevShare/PPS/Tokens-per-signup tracking, S2S conversion postbacks"
+          }
+        ],
+        "internal_non_public_layer": "WebSocket-style persistent connections, session cookies, and ephemeral room tokens (not an open developer API)",
+        "response_formats": ["JSON"]
+      },
+      "video_link_generation": {
+        "affiliate_discovery_links": "Affiliate-tagged room URLs and whitelabel endpoints generated via wm= affiliate ID",
+        "broadcaster_ingest_url": "rtmp://live.stream.highwebmedia.com/live-origin",
+        "ingest_specs": "H.264 (Main/High preferred) + AAC 192 Kbps, CBR up to 50 Mbps, 240p-4K (max 30 fps at 4K), 4:3 or 16:9, 2-5s keyframe interval",
+        "viewer_playback_delivery": "Server-side automatic multi-quality transcoding into adaptive live streams (internal tokenized playback URLs undocumented)"
+      },
+      "storage_and_delivery_infrastructure": {
+        "media_persistence": "Primarily ephemeral real-time live streaming (no official public VOD archive API)",
+        "ingest_infrastructure_domain": "live.stream.highwebmedia.com",
+        "cdn_and_origin_internals": "Undisclosed"
+      },
+      "terms_and_compliance_constraints": {
+        "broadcaster_verification": "Live selfie video + live video of unexpired government photo ID mandatory for independent broadcasters",
+        "token_security": "Events API tokens expose tips, private messages, and toy controls; must only be shared with trusted services"
+      }
+    },
+    {
+      "platform": "Stripchat (via Stripcash)",
+      "operator": "Stripchat / Stripcash Affiliate Network",
+      "business_model": "Live Interactive Webcam Platform & Affiliate/Whitelabel Ecosystem",
+      "public_interfaces_and_apis": {
+        "official_api_layers": [
+          {
+            "name": "Client-Side Online Models API",
+            "endpoints": [
+              "https://go.rmhfrtnd.com/api/dicts (filter/taxonomy dictionary)",
+              "https://go.rmhfrtnd.com/api/models/online (live status; must be called client-side in production)",
+              "https://go.rmhfrtnd.com/api/models (complete profiles)"
+            ],
+            "refresh_and_polling": "Underlying data refreshes every 30s; partners instructed to fetch online status every 5s"
+          },
+          {
+            "name": "Server-Side Aggregators Models API",
+            "authentication": "Bearer token",
+            "behavior": "Returns complete, non-truncated online model list with privacy/geo-blocking fields and CDNConfig host dictionary"
+          },
+          {
+            "name": "Statistics API",
+            "endpoint": "https://api.stripcash.com/external/v1/user/statistics",
+            "authentication": "Authorization: Bearer <API_KEY>"
+          }
+        ],
+        "additional_tools": "Dynamic niche-filtered iframes, anti-adblock widgets, ML performer filters, TDS postbacks, geo/device Smartlinks",
+        "response_formats": ["JSON"]
+      },
+      "video_link_generation": {
+        "dynamic_cdn_host_resolution": "Stream payloads contain CDN host placeholders; integrators substitute regional hostnames from the API's CDNConfig dictionary based on the viewer's country",
+        "playback_integration": "Compatible with Stripcash built-in chat/video scripts or external HLS players",
+        "affiliate_routing": "Smartlinks dynamically route clicks by geo, device, and conversion performance"
+      },
+      "storage_and_delivery_infrastructure": {
+        "media_persistence": "Primarily ephemeral live webcam delivery plus promotional snapshots/clips via Stripcash media API",
+        "delivery_architecture": "Geo-routed regional CDN host pools (CDNConfig) serving HLS; internal SFU/origin infrastructure undisclosed"
+      },
+      "terms_and_compliance_constraints": {
+        "privacy_and_geoblocking": "Client-side calls enforce performer country/region/language privacy automatically; server-side aggregators must store and enforce performer privacy settings locally to avoid routing traffic to hidden/private rooms",
+        "whitelabel_security": "Third-party script injection or external analytics tags are prohibited on whitelabels"
+      }
+    },
+    {
+      "platform": "LiveJasmin (via AWEmpire)",
+      "operator": "LiveJasmin / AWEmpire Affiliate Program",
+      "business_model": "Premium Live Webcam & Promotional Video Affiliate Network",
+      "public_interfaces_and_apis": {
+        "official_api_type": "Authenticated Video Promotion API + Live Promotional Feeds & Link Validation API",
+        "documentation_url": "http://auth.awempire.com/video-promotion-api",
+        "inventory_scope": "5,000+ promotional videos (avg 5-6 min; Straight, Gay, Trans) with 258x145px thumbnails/previews and 864x468px cover images",
+        "additional_feeds": ["HTML5 Live Feeds", "IFRAME online webcam thumbnails", "XML output files", "Custom Whitelabels"],
+        "response_formats": ["JSON", "XML", "HTML5/IFRAME"]
+      },
+      "video_link_generation": {
+        "deep_link_parameters": "Structured performer/category targeting via categoryName, pageName, performerName, prm[psid], prm[pstool], prm[psprogram], plus campaign codes",
+        "attribution_mechanics": "14-day non-rewritable 'first cookie wins' rule; optional Lifetime+ permanent user-to-affiliate binding on registration",
+        "player_requirement": "Mandatory use of official AWEmpire video player"
+      },
+      "storage_and_delivery_infrastructure": {
+        "traffic_scale_reference": "50M daily visitors reported in 2020 industry trade press",
+        "origin_storage_and_cdn": "Undisclosed"
+      },
+      "terms_and_compliance_constraints": {
+        "security_and_geoblocking": "Official video player is mandatory to maintain explicit content security and enforce per-model country restrictions"
+      }
+    },
+    {
+      "platform": "OnlyFans",
+      "operator": "Fenix International Limited",
+      "business_model": "Closed Subscription, Tips & Pay-Per-View (PPV) Creator Platform (80/20 split; + SFW OFTV)",
+      "public_interfaces_and_apis": {
+        "official_api_type": "None (No official public REST, GraphQL, or WebSocket API)",
+        "authentication": "Web UI session login only (or OnlyFans-approved third-party auth); no developer API keys or OAuth tokens issued",
+        "authorized_data_export": "Creator Dashboard manual CSV exports only",
+        "unofficial_ecosystem_note": "Third-party scraping APIs exist independently, are unaffiliated with Fenix International, and carry ToS-violation and account-suspension risk"
+      },
+      "video_link_generation": {
+        "external_embedding": "Not supported; closed authenticated access only",
+        "protected_media_delivery": "Authenticated session-gated delivery over Amazon CloudFront edge (internal origin signing mechanism undisclosed; standard AWS private video stacks pair S3 Origin Access Control with short-lived Signed URLs/Cookies)",
+        "content_protection": "Free creator-opt-in DRM Video Protection (applied to uploads after enabling; requires browser protected-content/EME support) + free digital watermarking"
+      },
+      "storage_and_delivery_infrastructure": {
+        "observed_cdn": "Amazon CloudFront (e.g., AWS CloudFront Ashburn VA edge detected via BuiltWith)",
+        "corporate_scale_fy2025": "$7.84B gross fan payments, $1.55B net revenue (rounded to ~$1.6B in press summaries; 72.8% non-subscription PPV/messages), $715M pre-tax profit, 5.06M creator accounts, 437.1M cumulative fan accounts, 47 direct employees (UK Companies House filings)",
+        "internal_origin_topology": "Cloud-native AWS edge observed; exact internal bucket, transcoding, and DRM license server details undisclosed"
+      },
+      "terms_and_compliance_constraints": {
+        "anti_scraping_clause": "Terms of Service Section 8.7 prohibits any manual or automatic tool/process to collect data from Content/Direct Services or circumvent access controls",
+        "anti_ai_clause": "Section 8.7 explicitly prohibits using Content or Direct Services to train or enhance any software, AI, or ML system",
+        "anti_circumvention": "Circumventing DRM implicates contractual breach and statutory restrictions (e.g., 17 U.S.C. Section 1201 in the US)"
+      }
+    },
+    {
+      "platform": "Fansly",
+      "operator": "Select Media LLC / CY Media LTD",
+      "business_model": "Closed Multi-Tier Subscription, Bundles & PPV Creator Platform",
+      "public_interfaces_and_apis": {
+        "official_api_type": "None (No official public developer API)",
+        "internal_web_api": "Private authenticated web API (fansly.com/api/) bound to user session authorization tokens and browser User-Agent (not licensed for third-party automation)",
+        "response_formats": ["Internal JSON only"]
+      },
+      "video_link_generation": {
+        "external_embedding": "Not supported; tier- and purchase-gated web delivery only",
+        "content_protection": "Automatic username watermarking on images/videos, basic screenshot/recording warnings, creator download permission toggles, user/IP blocking"
+      },
+      "storage_and_delivery_infrastructure": {
+        "origin_storage_and_cdn": "Undisclosed by Select Media LLC",
+        "anti_piracy_enforcement": "Built-in DMCA takedown support plus external leak monitoring (commercial takedown vendor BranditScan reported filing 14,317,559 DMCA notices for Fansly creators between Dec 2020 and Sep 2026)"
+      },
+      "terms_and_compliance_constraints": {
+        "prohibitions": "Terms strictly prohibit robots, spiders, scrapers, bots, unauthorized downloading/redistribution, photorealistic AI deepfakes, and unsupervised AI interaction (Sections 01.6, 04.1, 04.2)",
+        "enforcement": "Immediate account suspension/termination without notice and potential earnings forfeiture for violations"
+      }
+    }
+  ]
+}
