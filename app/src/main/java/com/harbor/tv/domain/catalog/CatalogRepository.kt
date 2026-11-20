@@ -24,9 +24,17 @@ import com.harbor.tv.domain.sources.SourceRegistry
 import com.harbor.tv.engine.definition.SourceDefinition
 import com.harbor.tv.engine.extract.UnifiedOperationExtractor
 import com.harbor.tv.engine.policy.RequestPolicyEngine
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import java.util.Collections
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Coordinates source-backed catalog browsing (categories, cycle-safe paginated listings,
@@ -251,55 +259,71 @@ class CatalogRepository(
                     def.operations.search != null
             }
 
-        val allNormalized = mutableListOf<CatalogItem>()
-        val queriedIds = mutableListOf<String>()
-        val errors = linkedMapOf<String, HarborException>()
+        val allNormalized = Collections.synchronizedList(mutableListOf<CatalogItem>())
+        val queriedIds = enabledDefs.map { it.source.id }
+        val errors = ConcurrentHashMap<String, HarborException>()
         val privateSession = isPrivateSession(profile)
 
-        for (definition in enabledDefs) {
-            val sourceId = definition.source.id
-            queriedIds.add(sourceId)
-            val op = definition.operations.search ?: continue
-            val userAllowLan = profile.allowLanSources && definition.network.allowLan
+        coroutineScope {
+            enabledDefs.map { definition ->
+                async {
+                    val sourceId = definition.source.id
+                    val op = definition.operations.search ?: return@async
+                    val userAllowLan = profile.allowLanSources && definition.network.allowLan
 
-            try {
-                val requestUrl = policyEngine.buildInterpolatedUrl(
-                    requestDef = op.request,
-                    definition = definition,
-                    variables = mapOf("input.query" to trimmedQuery),
-                    allowedVariables = setOf("source.baseUrl", "input.query")
-                )
-                val response = transport.executeGet(
-                    url = requestUrl,
-                    definition = definition,
-                    purpose = HostPurpose.CATALOG,
-                    extraHeaders = op.request.headers,
-                    userAllowLan = userAllowLan
-                )
-                val extracted = extractor.extractListing(definition, "search", response.body, response.finalUrl)
-                val normalized = normalizer.normalizeCatalogItems(
-                    items = extracted.listing.items,
-                    definition = definition,
-                    userAllowLan = userAllowLan
-                )
-                allNormalized.addAll(normalized)
-                if (!privateSession) {
-                    cacheItems(normalized, definition.source.version)
+                    try {
+                        withTimeout(15_000L) {
+                            val requestUrl = policyEngine.buildInterpolatedUrl(
+                                requestDef = op.request,
+                                definition = definition,
+                                variables = mapOf("input.query" to trimmedQuery),
+                                allowedVariables = setOf("source.baseUrl", "input.query")
+                            )
+                            val response = transport.executeGet(
+                                url = requestUrl,
+                                definition = definition,
+                                purpose = HostPurpose.CATALOG,
+                                extraHeaders = op.request.headers,
+                                userAllowLan = userAllowLan
+                            )
+                            val extracted = extractor.extractListing(definition, "search", response.body, response.finalUrl)
+                            val normalized = normalizer.normalizeCatalogItems(
+                                items = extracted.listing.items,
+                                definition = definition,
+                                userAllowLan = userAllowLan
+                            )
+                            allNormalized.addAll(normalized)
+                            if (!privateSession) {
+                                cacheItems(normalized, definition.source.version)
+                            }
+                        }
+                    } catch (e: TimeoutCancellationException) {
+                        errors[sourceId] = HarborException(
+                            HarborErrorCode.NETWORK_UNAVAILABLE,
+                            "Search timed out for '$sourceId'",
+                            sourceId = sourceId,
+                            operation = "search",
+                            isRetryable = true,
+                            cause = e
+                        )
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: HarborException) {
+                        errors[sourceId] = e
+                    } catch (e: Exception) {
+                        errors[sourceId] = HarborException(
+                            HarborErrorCode.NETWORK_UNAVAILABLE,
+                            "Search failed for '$sourceId': ${e.message}",
+                            sourceId = sourceId,
+                            operation = "search",
+                            cause = e
+                        )
+                    }
                 }
-            } catch (e: HarborException) {
-                errors[sourceId] = e
-            } catch (e: Exception) {
-                errors[sourceId] = HarborException(
-                    HarborErrorCode.NETWORK_UNAVAILABLE,
-                    "Search failed for '$sourceId': ${e.message}",
-                    sourceId = sourceId,
-                    operation = "search",
-                    cause = e
-                )
-            }
+            }.awaitAll()
         }
 
-        val deduplicated = normalizer.deduplicateItems(allNormalized)
+        val deduplicated = normalizer.deduplicateItems(allNormalized.toList())
         val enabledIds = sourceRegistry.getEnabledSourceIds()
         val filtered = filterEngine.filterAndRank(
             items = deduplicated,
@@ -311,7 +335,7 @@ class CatalogRepository(
         MultiSourceSearchResult(
             items = filtered,
             queriedSourceIds = queriedIds,
-            sourceErrors = errors
+            sourceErrors = errors.toMap()
         )
     }
 
@@ -360,19 +384,53 @@ class CatalogRepository(
     suspend fun getCachedCatalogItems(
         sourceId: String,
         preferences: PreferenceConfig
-    ): List<CatalogItem> {
-        val dao = catalogCacheDao ?: return emptyList()
-        val definition = sourceRegistry.getEnabledDefinition(sourceId) ?: return emptyList()
+    ): List<CatalogItem> = withContext(Dispatchers.IO) {
+        val dao = catalogCacheDao ?: return@withContext emptyList()
+        val definition = sourceRegistry.getEnabledDefinition(sourceId) ?: return@withContext emptyList()
         val now = clockMs()
         dao.deleteExpired(now)
         val cached = dao.getValidForSource(sourceId, definition.source.version, now)
             .mapNotNull { CatalogItemJsonCodec.decode(it.itemJson) }
         val enabledIds = sourceRegistry.getEnabledSourceIds()
-        return filterEngine.filterAndRank(
+        filterEngine.filterAndRank(
             items = normalizer.deduplicateItems(cached),
             preferences = preferences,
             enabledSourceIds = enabledIds
         )
+    }
+
+    /**
+     * Hydrates valid cached catalog items per enabled source on [Dispatchers.IO] for instant
+     * cold-start Home rendering while still enforcing active [PreferenceFilterEngine] exclusions.
+     */
+    suspend fun getCachedHomeRows(
+        sourceIds: List<String>,
+        preferences: PreferenceConfig
+    ): Map<String, List<CatalogItem>> = withContext(Dispatchers.IO) {
+        val dao = catalogCacheDao ?: return@withContext emptyMap()
+        if (sourceIds.isEmpty()) return@withContext emptyMap()
+
+        val now = clockMs()
+        dao.deleteExpired(now)
+        val enabledIds = sourceRegistry.getEnabledSourceIds()
+        val result = linkedMapOf<String, List<CatalogItem>>()
+
+        for (sourceId in sourceIds) {
+            if (sourceId !in enabledIds || sourceId in preferences.excludedSources) continue
+            val definition = sourceRegistry.getEnabledDefinition(sourceId) ?: continue
+            val cached = dao.getValidForSource(sourceId, definition.source.version, now)
+                .mapNotNull { CatalogItemJsonCodec.decode(it.itemJson) }
+            if (cached.isEmpty()) continue
+            val filtered = filterEngine.filterAndRank(
+                items = normalizer.deduplicateItems(cached),
+                preferences = preferences,
+                enabledSourceIds = enabledIds
+            )
+            if (filtered.isNotEmpty()) {
+                result[sourceId] = filtered
+            }
+        }
+        result
     }
 
     suspend fun getFavorites(

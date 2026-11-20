@@ -11,6 +11,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.BaseDataSource
@@ -84,6 +85,10 @@ data class PlayerUiState(
     val isSeekable: Boolean = false,
     val isLive: Boolean = false,
     val isPrivateSession: Boolean = false,
+    val decodedWidth: Int = 0,
+    val decodedHeight: Int = 0,
+    val decodedFrameRate: Float = 0f,
+    val videoCodec: String? = null,
     val candidates: List<PlaybackCandidate> = emptyList(),
     val activeCandidate: PlaybackCandidate? = null,
     val audioTracks: List<PlayerTrackOption> = emptyList(),
@@ -175,7 +180,7 @@ class HarborPlayerController(
     }
 
     private val loadControl = DefaultLoadControl.Builder()
-        .setTargetBufferBytes(12 * 1024 * 1024)
+        .setTargetBufferBytes(18 * 1024 * 1024)
         .setBufferDurationsMs(8_000, 20_000, 1_500, 3_000)
         .setPrioritizeTimeOverSizeThresholds(false)
         .setBackBuffer(2_000, false)
@@ -183,7 +188,7 @@ class HarborPlayerController(
 
     private val trackSelector = DefaultTrackSelector(appContext).apply {
         parameters = buildUponParameters()
-            .setMaxVideoSize(1920, 1080)
+            .setMaxVideoSize(3840, 2160)
             .build()
     }
 
@@ -234,6 +239,17 @@ class HarborPlayerController(
 
         override fun onTracksChanged(tracks: Tracks) {
             updateTracksFromPlayer(tracks)
+        }
+
+        override fun onVideoSizeChanged(videoSize: VideoSize) {
+            if (videoSize.width > 0 && videoSize.height > 0) {
+                _uiState.update {
+                    it.copy(
+                        decodedWidth = videoSize.width,
+                        decodedHeight = videoSize.height
+                    )
+                }
+            }
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -606,11 +622,21 @@ class HarborPlayerController(
         val audio = mutableListOf<PlayerTrackOption>()
         val subtitles = mutableListOf<PlayerTrackOption>()
         val textDisabled = C.TRACK_TYPE_TEXT in player.trackSelectionParameters.disabledTrackTypes
+        var selectedVideoWidth = 0
+        var selectedVideoHeight = 0
+        var selectedFrameRate = 0f
+        var selectedCodec: String? = null
 
         tracks.groups.forEachIndexed { groupIdx, group ->
             for (trackIdx in 0 until group.length) {
                 if (!group.isTrackSupported(trackIdx)) continue
                 val format = group.getTrackFormat(trackIdx)
+                if (group.type == C.TRACK_TYPE_VIDEO && group.isTrackSelected(trackIdx)) {
+                    if (format.width > 0) selectedVideoWidth = format.width
+                    if (format.height > 0) selectedVideoHeight = format.height
+                    if (format.frameRate > 0f) selectedFrameRate = format.frameRate
+                    selectedCodec = format.codecs ?: format.sampleMimeType
+                }
                 val label = format.label?.takeIf { it.isNotBlank() }
                     ?: format.language?.takeIf { it.isNotBlank() }
                     ?: "Track ${trackIdx + 1}"
@@ -628,11 +654,15 @@ class HarborPlayerController(
             }
         }
 
-        _uiState.update {
-            it.copy(
+        _uiState.update { current ->
+            current.copy(
                 audioTracks = audio,
                 subtitleTracks = subtitles,
-                subtitlesDisabled = textDisabled
+                subtitlesDisabled = textDisabled,
+                decodedWidth = if (selectedVideoWidth > 0) selectedVideoWidth else current.decodedWidth,
+                decodedHeight = if (selectedVideoHeight > 0) selectedVideoHeight else current.decodedHeight,
+                decodedFrameRate = if (selectedFrameRate > 0f) selectedFrameRate else current.decodedFrameRate,
+                videoCodec = selectedCodec ?: current.videoCodec
             )
         }
     }

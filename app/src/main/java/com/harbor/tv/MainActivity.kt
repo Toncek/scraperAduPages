@@ -18,9 +18,11 @@ import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.harbor.tv.core.model.DefinitionLifecycleState
+import okhttp3.ConnectionPool
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
+import java.util.concurrent.TimeUnit
 import com.harbor.tv.core.tvui.HarborColors
 import com.harbor.tv.core.tvui.HarborNavDestination
 import com.harbor.tv.core.tvui.HarborTvTheme
@@ -57,6 +59,7 @@ class MainActivity : ComponentActivity() {
         val userAgent =
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         val client = OkHttpClient.Builder()
+            .connectionPool(ConnectionPool(6, 30, TimeUnit.SECONDS))
             .followRedirects(true)
             .followSslRedirects(true)
             .addInterceptor(object : Interceptor {
@@ -208,11 +211,16 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         enabledSourceIds = enabledSourceIds,
                         quickCategories = state.homeQuickCategories,
                         rowsBySource = state.homeRowsBySource,
+                        featuredHomeItem = state.featuredHomeItem,
+                        only4kFilter = state.only4kFilter,
                         watchHistory = state.watchHistory,
                         isLoading = state.isLoading,
                         errorMessage = state.errorMessage,
                         lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.HOME],
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.HOME, key) },
+                        onFeaturedItemFocused = { item -> viewModel.setFeaturedHomeItem(item) },
+                        onToggleOnly4kFilter = { viewModel.toggleOnly4kFilter() },
+                        onQuickBrowse4k = { viewModel.quickSearch4k() },
                         onOpenVideo = { item -> viewModel.openVideoDetails(item) },
                         onOpenCategory = { cat -> viewModel.openQuickCategory(cat) },
                         onRefresh = { viewModel.refreshHome() },
@@ -229,12 +237,14 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         categories = state.categoriesForSelectedSource,
                         selectedCategory = state.selectedCategory,
                         items = state.categoryItems,
+                        only4kFilter = state.only4kFilter,
                         nextCursor = state.categoryNextCursor,
                         pagesLoaded = state.categoryPagesLoaded,
                         isLoading = state.isLoading,
                         errorMessage = state.errorMessage,
                         lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.CATEGORIES],
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.CATEGORIES, key) },
+                        onToggleOnly4kFilter = { viewModel.toggleOnly4kFilter() },
                         onSelectSource = { sourceId -> viewModel.selectCategorySource(sourceId) },
                         onSelectCategory = { cat -> viewModel.selectCategory(cat) },
                         onLoadNextPage = { viewModel.loadNextCategoryPage() },
@@ -249,10 +259,12 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         enabledSourceIds = enabledSourceIds,
                         selectedSourceFilterId = state.searchSourceFilterId,
                         results = state.searchResults,
+                        only4kFilter = state.only4kFilter,
                         sourceErrors = state.searchErrors,
                         isLoading = state.isLoading,
                         lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.SEARCH],
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.SEARCH, key) },
+                        onToggleOnly4kFilter = { viewModel.toggleOnly4kFilter() },
                         onQueryChange = { q -> viewModel.updateSearchQuery(q) },
                         onSelectSourceFilter = { id -> viewModel.setSearchSourceFilter(id) },
                         onSearch = { q -> viewModel.executeSearch(q) },

@@ -33,6 +33,7 @@ class SemanticValidator {
             "urlEncode",
             "template",
             "regexExtract",
+            "regexExtractAll",
             "unescapeJson",
             "hexChunksToBase36"
         )
@@ -1123,13 +1124,13 @@ class SemanticValidator {
                         )
                     }
                 }
-                "regexExtract" -> {
+                "regexExtract", "regexExtractAll" -> {
                     if (t.pattern.isNullOrEmpty()) {
                         issues.add(
                             issue(
                                 HarborErrorCode.DEFINITION_INVALID,
                                 "$tPath.pattern",
-                                "Transform 'regexExtract' requires a non-empty 'pattern'"
+                                "Transform '${t.op}' requires a non-empty 'pattern'"
                             )
                         )
                     } else {
@@ -1150,7 +1151,7 @@ class SemanticValidator {
                             issue(
                                 HarborErrorCode.DEFINITION_INVALID,
                                 "$tPath.group",
-                                "Transform 'regexExtract' group must be >= 0"
+                                "Transform '${t.op}' group must be >= 0"
                             )
                         )
                     }

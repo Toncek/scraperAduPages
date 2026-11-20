@@ -140,10 +140,14 @@ class PlaybackResolver(
                 policyEngine.validateHeaders(rawCandidate.headers)
             }
 
+            val inferredHeight = rawCandidate.resolutionHeight
+                ?: inferResolutionHeight(rawCandidate.qualityLabel, normalizedUrl)
+
             validatedCandidates.add(
                 rawCandidate.copy(
                     url = normalizedUrl,
                     streamType = streamType,
+                    resolutionHeight = inferredHeight,
                     headers = sanitizedHeaders
                 )
             )
@@ -311,6 +315,25 @@ class PlaybackResolver(
                     { it.bitrateKbps ?: 0 }
                 )
             )
+        }
+    }
+
+    fun inferResolutionHeight(qualityLabel: String?, url: String): Int? {
+        return parseResolutionToken(qualityLabel) ?: parseResolutionToken(url)
+    }
+
+    private fun parseResolutionToken(raw: String?): Int? {
+        if (raw.isNullOrBlank()) return null
+        val lower = raw.lowercase(Locale.ROOT)
+        return when {
+            Regex("""(?:^|[^a-z0-9])(2160p|4k|3840x2160)(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 2160
+            Regex("""(?:^|[^a-z0-9])(1440p|2k)(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 1440
+            Regex("""(?:^|[^a-z0-9])(1080p|fhd)(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 1080
+            Regex("""(?:^|[^a-z0-9])720p(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 720
+            Regex("""(?:^|[^a-z0-9])480p(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 480
+            Regex("""(?:^|[^a-z0-9])360p(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 360
+            Regex("""(?:^|[^a-z0-9])240p(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 240
+            else -> null
         }
     }
 

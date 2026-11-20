@@ -54,7 +54,7 @@ class HarborMediaPreloader(
         private const val BUFFER_SIZE_BYTES = 64 * 1024
         private const val MAX_PLAYLIST_BYTES = 2L * 1024L * 1024L
         private const val MAX_DASH_MANIFEST_BYTES = 4L * 1024L * 1024L
-        private const val MAX_HLS_HEIGHT = 1080
+        private const val MAX_HLS_HEIGHT = 2160
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

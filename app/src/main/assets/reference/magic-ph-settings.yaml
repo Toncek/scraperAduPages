@@ -169,6 +169,7 @@ websites:
       directVideo: "https://xh.video/v/{short_code}"
     limitations:
       - "Partner portal requires registration and domain approval; ToS clause 2.3.5 prohibits unauthorized scrapers and clause 2.3.15 prohibits custom players/hotlinking."
+    bundledDefinitionAsset: "definitions/xhamster-html.yaml"
     sourceStatus: "reference-only"
 
   - id: "xnxx"
@@ -359,6 +360,7 @@ websites:
     urlFormats: {}
     limitations:
       - "Requires explicit declarative definition and authorization review."
+    bundledDefinitionAsset: "definitions/porntrex-html.yaml"
     sourceStatus: "reference-only"
 
   - id: "analdin"

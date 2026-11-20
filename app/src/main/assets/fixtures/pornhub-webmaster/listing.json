@@ -5,14 +5,16 @@
       "title": "Sanitized Pornhub Webmasters Demo 1",
       "duration": "05:30",
       "url": "https://www.pornhub.com/view_video.php?viewkey=phdemo001",
-      "default_thumb": "https://www.pornhub.com/thumbs/demo/phdemo001.jpg"
+      "default_thumb": "https://www.pornhub.com/thumbs/demo/phdemo001.jpg",
+      "tags": ["HD", "4K"]
     },
     {
       "video_id": "phdemo002",
       "title": "Sanitized Pornhub Webmasters Demo 2",
       "duration": "08:10",
       "url": "https://www.pornhub.com/view_video.php?viewkey=phdemo002",
-      "default_thumb": "https://www.pornhub.com/thumbs/demo/phdemo002.jpg"
+      "default_thumb": "https://www.pornhub.com/thumbs/demo/phdemo002.jpg",
+      "tags": ["HD"]
     }
   ]
 }

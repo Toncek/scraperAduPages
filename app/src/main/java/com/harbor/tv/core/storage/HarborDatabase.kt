@@ -111,7 +111,7 @@ data class ProfileEntity(
 ) {
     fun toUserProfile(
         isPrivateSession: Boolean = false,
-        preferredResolutionHeight: Int = 1080,
+        preferredResolutionHeight: Int = 2160,
         preferredBitrateKbps: Int = 5000
     ): UserProfile {
         val mode = runCatching { UnknownMetadataMode.valueOf(unknownMetadataMode) }
@@ -337,6 +337,12 @@ object CatalogItemJsonCodec {
             if (item.contentRating != null) {
                 put("contentRating", item.contentRating)
             }
+            if (item.maxQualityLabel != null) {
+                put("maxQualityLabel", item.maxQualityLabel)
+            }
+            if (item.maxResolutionHeight != null) {
+                put("maxResolutionHeight", item.maxResolutionHeight)
+            }
             put("thumbnailReferences", buildJsonArray {
                 item.thumbnailReferences.forEach { add(JsonPrimitive(it)) }
             })
@@ -394,6 +400,8 @@ object CatalogItemJsonCodec {
                 tagProvenance = provenance,
                 languages = decodeStringList(obj["languages"] as? JsonArray),
                 contentRating = obj["contentRating"]?.jsonPrimitive?.contentOrNull,
+                maxQualityLabel = obj["maxQualityLabel"]?.jsonPrimitive?.contentOrNull,
+                maxResolutionHeight = obj["maxResolutionHeight"]?.jsonPrimitive?.intOrNull,
                 thumbnailReferences = decodeStringList(obj["thumbnailReferences"] as? JsonArray),
                 metadataCompleteness = completeness,
                 metadataProvenance = obj["metadataProvenance"]?.jsonPrimitive?.contentOrNull ?: "cache",

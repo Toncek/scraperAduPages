@@ -106,6 +106,12 @@ class CatalogNormalizer(
         val sourceTags = extractStringList(rawFields["sourceTags"])
         val rawLanguages = extractStringList(rawFields["languages"] ?: rawFields["language"])
         val contentRating = extractScalar(rawFields["contentRating"])?.takeIf { it.isNotBlank() }
+        val rawMaxQuality = extractScalar(
+            rawFields["maxQuality"] ?: rawFields["maxQualityLabel"] ?: rawFields["qualityLabel"]
+        )?.takeIf { it.isNotBlank() }
+        val explicitMaxResolutionHeight = extractInt(
+            rawFields["maxResolutionHeight"] ?: rawFields["resolutionHeight"]
+        )
         val rawThumbnails = extractStringList(rawFields["thumbnailUrl"] ?: rawFields["thumbnailReferences"])
 
         return buildNormalizedCatalogItem(
@@ -119,6 +125,8 @@ class CatalogNormalizer(
             sourceTags = sourceTags,
             languages = rawLanguages,
             contentRating = contentRating,
+            rawMaxQuality = rawMaxQuality,
+            explicitMaxResolutionHeight = explicitMaxResolutionHeight,
             rawThumbnails = rawThumbnails,
             definition = definition,
             userAllowLan = userAllowLan,
@@ -143,6 +151,8 @@ class CatalogNormalizer(
             sourceTags = item.sourceTags,
             languages = item.languages,
             contentRating = item.contentRating,
+            rawMaxQuality = item.maxQualityLabel,
+            explicitMaxResolutionHeight = item.maxResolutionHeight,
             rawThumbnails = item.thumbnailReferences,
             definition = definition,
             userAllowLan = userAllowLan,
@@ -323,6 +333,8 @@ class CatalogNormalizer(
         sourceTags: List<String>,
         languages: List<String>,
         contentRating: String?,
+        rawMaxQuality: String?,
+        explicitMaxResolutionHeight: Int?,
         rawThumbnails: List<String>,
         definition: SourceDefinition,
         userAllowLan: Boolean,
@@ -349,6 +361,14 @@ class CatalogNormalizer(
                 ?.let { resolvedLanguages.add(it) }
         }
 
+        val (maxQualityLabel, maxResolutionHeight) = resolveMaxQuality(
+            rawMaxQuality = rawMaxQuality,
+            explicitHeight = explicitMaxResolutionHeight,
+            sourceTags = cleanedSourceTags,
+            canonicalTags = tagResult.canonicalTags,
+            title = title
+        )
+
         val validThumbnails = filterValidThumbnails(rawThumbnails, definition, userAllowLan)
         val completeness = computeMetadataCompleteness(
             sourceItemId = sourceItemId,
@@ -374,11 +394,87 @@ class CatalogNormalizer(
             tagProvenance = tagResult.tagProvenance,
             languages = resolvedLanguages.toList(),
             contentRating = contentRating,
+            maxQualityLabel = maxQualityLabel,
+            maxResolutionHeight = maxResolutionHeight,
             thumbnailReferences = validThumbnails,
             metadataCompleteness = completeness,
             metadataProvenance = metadataProvenance,
             fetchedAt = fetchedAt
         )
+    }
+
+    fun resolveMaxQuality(
+        rawMaxQuality: String?,
+        explicitHeight: Int?,
+        sourceTags: List<String>,
+        canonicalTags: List<String>,
+        title: String
+    ): Pair<String?, Int?> {
+        val rawNormalized = rawMaxQuality?.let { normalizeQualityToken(it) }
+        if (rawNormalized != null) {
+            return rawNormalized.first to (rawNormalized.second ?: explicitHeight)
+        }
+
+        val candidates = sequence {
+            for (tag in sourceTags) yield(tag)
+            for (tag in canonicalTags) yield(tag)
+            yield(title)
+        }
+        var best: Pair<String, Int>? = null
+        for (candidate in candidates) {
+            val parsed = detectQualityInText(candidate) ?: continue
+            if (best == null || parsed.second > best.second) {
+                best = parsed
+            }
+        }
+        if (best != null) {
+            return best.first to (explicitHeight ?: best.second)
+        }
+
+        val fallbackLabel = rawMaxQuality?.trim()?.takeIf { it.isNotEmpty() }
+            ?: explicitHeight?.let { labelForHeight(it) }
+        return fallbackLabel to explicitHeight
+    }
+
+    private fun normalizeQualityToken(raw: String): Pair<String, Int?>? {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return null
+        val lower = trimmed.lowercase(Locale.ROOT)
+        return when {
+            lower == "format-4k-text" || lower == "4k" || lower == "uhd" || lower == "2160p" || lower == "2160" -> "4K" to 2160
+            lower == "format-hd-text" || lower == "hd" -> "HD" to 720
+            else -> detectQualityInText(trimmed)
+        }
+    }
+
+    private fun detectQualityInText(text: String): Pair<String, Int>? {
+        val lower = text.lowercase(Locale.ROOT)
+        return when {
+            Regex("""(?:^|[^a-z0-9])(4k|uhd|2160p|3840x2160)(?:$|[^a-z0-9])""").containsMatchIn(lower) ||
+                lower.contains("format-4k-text") -> "4K" to 2160
+            Regex("""(?:^|[^a-z0-9])(1440p|2k|qhd)(?:$|[^a-z0-9])""").containsMatchIn(lower) -> "1440p" to 1440
+            Regex("""(?:^|[^a-z0-9])(1080p|fhd)(?:$|[^a-z0-9])""").containsMatchIn(lower) -> "1080p" to 1080
+            Regex("""(?:^|[^a-z0-9])720p(?:$|[^a-z0-9])""").containsMatchIn(lower) -> "720p" to 720
+            Regex("""(?:^|[^a-z0-9])hd(?:$|[^a-z0-9])""").containsMatchIn(lower) ||
+                lower.contains("format-hd-text") -> "HD" to 720
+            Regex("""(?:^|[^a-z0-9])480p(?:$|[^a-z0-9])""").containsMatchIn(lower) -> "480p" to 480
+            Regex("""(?:^|[^a-z0-9])360p(?:$|[^a-z0-9])""").containsMatchIn(lower) -> "360p" to 360
+            Regex("""(?:^|[^a-z0-9])240p(?:$|[^a-z0-9])""").containsMatchIn(lower) -> "240p" to 240
+            else -> null
+        }
+    }
+
+    private fun labelForHeight(height: Int): String? {
+        return when {
+            height >= 2160 -> "4K"
+            height >= 1440 -> "1440p"
+            height >= 1080 -> "1080p"
+            height >= 720 -> "720p"
+            height >= 480 -> "480p"
+            height >= 360 -> "360p"
+            height > 0 -> "${height}p"
+            else -> null
+        }
     }
 
     private fun parseLiveStatus(

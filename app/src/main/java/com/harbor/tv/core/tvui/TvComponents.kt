@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.key.Key
@@ -489,14 +490,20 @@ fun TvVideoCard(
     onFocused: (() -> Unit)? = null
 ) {
     val thumbUrl = item.thumbnailReferences.firstOrNull()?.takeIf { it.isNotBlank() }
+    val qualityBadge = resolveQualityBadge(
+        maxResolutionHeight = item.maxResolutionHeight,
+        maxQualityLabel = item.maxQualityLabel,
+        tags = item.canonicalTags
+    )
 
     TvFocusableCard(
         onClick = onClick,
         modifier = modifier.width(268.dp),
         focusRequester = focusRequester,
         onFocused = onFocused,
+        focusedScale = 1.04f,
         contentPadding = 10.dp
-    ) {
+    ) { isFocused ->
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(
                 modifier = Modifier
@@ -534,13 +541,26 @@ fun TvVideoCard(
                     }
                 }
 
-                // Source badge
+                // Bottom gradient scrim for legible corner badges
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.45f)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color(0xCC060911))
+                            )
+                        )
+                )
+
+                // Source badge (top-left)
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(6.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(HarborColors.Scrim)
+                        .background(HarborColors.SurfaceGlass)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
@@ -550,7 +570,27 @@ fun TvVideoCard(
                     )
                 }
 
-                // Duration or Live badge
+                // Max Quality badge (top-right)
+                if (qualityBadge != null) {
+                    val (qLabel, qColor) = qualityBadge
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(qColor.copy(alpha = 0.92f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = qLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = HarborColors.Background,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+
+                // Duration or Live badge (bottom-right)
                 val badgeText = when {
                     item.liveStatus == LiveStatus.LIVE -> "LIVE"
                     item.liveStatus == LiveStatus.UPCOMING -> "UPCOMING"
@@ -565,7 +605,7 @@ fun TvVideoCard(
                             .clip(RoundedCornerShape(4.dp))
                             .background(
                                 if (item.liveStatus == LiveStatus.LIVE) HarborColors.DangerRed
-                                else HarborColors.Scrim
+                                else HarborColors.SurfaceGlass
                             )
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
@@ -586,12 +626,15 @@ fun TvVideoCard(
             Text(
                 text = item.title,
                 style = MaterialTheme.typography.titleMedium,
-                color = HarborColors.TextPrimary,
+                color = if (isFocused) HarborColors.FocusCyan else HarborColors.TextPrimary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
 
             val tagsPreview = (item.canonicalTags.ifEmpty { item.sourceTags })
+                .map(::formatTagForDisplay)
+                .filter { it.isNotBlank() }
+                .distinct()
                 .take(3)
                 .joinToString(" • ")
             Text(
@@ -602,6 +645,40 @@ fun TvVideoCard(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+fun formatTagForDisplay(rawTag: String): String {
+    val clean = rawTag.trim()
+    if (clean.isEmpty()) return ""
+    val stripped = if ('.' in clean) clean.substringAfter('.') else clean
+    return stripped.replace('_', ' ')
+}
+
+fun resolveQualityBadge(
+    maxResolutionHeight: Int?,
+    maxQualityLabel: String?,
+    tags: List<String> = emptyList()
+): Pair<String, Color>? {
+    val height = maxResolutionHeight ?: 0
+    return when {
+        height >= 2160 -> "4K" to HarborColors.Gold4K
+        height >= 1440 -> "1440p" to HarborColors.QuadHdViolet
+        height >= 1080 -> "1080p" to HarborColors.FocusCyan
+        height >= 720 -> "720p" to HarborColors.AccentTeal
+        !maxQualityLabel.isNullOrBlank() -> {
+            val clean = maxQualityLabel.trim()
+            val color = when {
+                clean.contains("4k", ignoreCase = true) || clean.contains("2160") -> HarborColors.Gold4K
+                clean.contains("1440") || clean.contains("2k", ignoreCase = true) -> HarborColors.QuadHdViolet
+                clean.contains("1080") || clean.contains("fhd", ignoreCase = true) -> HarborColors.FocusCyan
+                else -> HarborColors.AccentTeal
+            }
+            clean to color
+        }
+        tags.any { it.equals("quality.4k", ignoreCase = true) } -> "4K" to HarborColors.Gold4K
+        tags.any { it.equals("quality.hd", ignoreCase = true) } -> "HD" to HarborColors.AccentTeal
+        else -> null
     }
 }
 

@@ -3,7 +3,7 @@ schemaVersion: "1.0"
 source:
   id: "redtube-api"
   name: "RedTube Query API"
-  version: "1.1.0"
+  version: "1.2.0"
   description: "Level 2/4 official RedTube Query API catalog with 2-step embed + HLS JSON playlist resolution."
   author: "Harbor Reference"
   language: "en"
@@ -65,6 +65,8 @@ taxonomy:
       - "category.amateur"
     "HD":
       - "quality.hd"
+    "4K":
+      - "quality.4k"
 
 operations:
   categories:

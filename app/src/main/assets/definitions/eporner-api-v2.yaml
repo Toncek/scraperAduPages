@@ -3,7 +3,7 @@ schemaVersion: "1.0"
 source:
   id: "eporner-api-v2"
   name: "Eporner REST API v2"
-  version: "1.1.0"
+  version: "1.2.0"
   description: "Level 2/4 Eporner REST API v2 catalog with 2-step embed + XHR stream resolution."
   author: "Harbor Reference"
   language: "en"
@@ -96,7 +96,7 @@ operations:
               - op: "trim"
               - op: "urlEncode"
               - op: "template"
-                template: "https://www.eporner.com/api/v2/video/search/?query=${value}&per_page=24&thumbsize=medium&format=json"
+                template: "https://www.eporner.com/api/v2/video/search/?query=${value}&per_page=24&thumbsize=big&format=json"
             required: true
 
   listing:
@@ -154,7 +154,7 @@ operations:
       query:
         query: "${input.query}"
         per_page: "24"
-        thumbsize: "medium"
+        thumbsize: "big"
         format: "json"
     response:
       type: "json"
@@ -208,7 +208,7 @@ operations:
       - id: "xhrVideo"
         request:
           method: "GET"
-          url: "https://www.eporner.com/xhr/video/${embedPage.vid}?hash=${embedPage.hash}&domain=www.eporner.com&pixelRatio=1&playerHeight=720&fallback=false&embed=true&supportedFormats=hls,mp4"
+          url: "https://www.eporner.com/xhr/video/${embedPage.vid}?hash=${embedPage.hash}&domain=www.eporner.com&pixelRatio=1&playerHeight=2160&fallback=false&embed=true&supportedFormats=dash,mp4"
         response:
           type: "json"
         extract:
@@ -253,7 +253,7 @@ fixtures:
     operation: "listing"
     responseFile: "fixtures/eporner-api-v2/listing.json"
     input:
-      url: "https://www.eporner.com/api/v2/video/search/?query=all&per_page=24&thumbsize=medium&format=json"
+      url: "https://www.eporner.com/api/v2/video/search/?query=all&per_page=24&thumbsize=big&format=json"
     expected:
       minimumItems: 2
       requiredFields:

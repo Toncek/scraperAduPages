@@ -1,0 +1,293 @@
+schemaVersion: "1.0"
+
+source:
+  id: "xhamster-html"
+  name: "xHamster Video Catalog"
+  version: "1.2.0"
+  description: "Level 1/3 4K-capable HTML catalog and HLS playlist extraction for xHamster."
+  author: "Harbor Reference"
+  language: "en"
+  baseUrl: "https://xhamster.com"
+  enabledByDefault: true
+
+  permission:
+    basis: "public-api"
+    reference: "xHamster public HTML catalog pages"
+
+  capabilities:
+    categories: true
+    search: true
+    details: true
+    playback: true
+    live: false
+    intermediateTraversal: false
+
+network:
+  httpsOnly: true
+  lanAccess: false
+
+  allowedHosts:
+    catalog:
+      - "xhamster.com"
+      - "www.xhamster.com"
+    images:
+      - "xhamster.com"
+      - "*.xhmediacdn.com"
+      - "*.xhcdn.com"
+    media:
+      - "xhamster.com"
+      - "*.xhmediacdn.com"
+      - "*.xhcdn.com"
+
+  redirects:
+    maxHops: 3
+
+  timeouts:
+    connectMs: 10000
+    readMs: 15000
+    operationMs: 30000
+
+  limits:
+    maxConcurrentRequests: 2
+    minRequestIntervalMs: 500
+    maxCatalogResponseBytes: 2097152
+    maxItemsPerPage: 100
+
+  headers:
+    Accept: "text/html"
+    User-Agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+authentication:
+  type: "none"
+
+taxonomy:
+  namespace: "xhamster-html"
+  mappings:
+    "HD":
+      - "quality.hd"
+    "4K":
+      - "quality.4k"
+
+operations:
+  categories:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/categories"
+    response:
+      type: "html"
+    extract:
+      items:
+        selector: "a[href*='/categories/']"
+        limit: 100
+        fields:
+          id:
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+              - op: "canonicalUrl"
+            required: true
+          title:
+            read: "text"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          url:
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+
+  listing:
+    request:
+      method: "GET"
+      url: "${input.url}"
+    response:
+      type: "html"
+    extract:
+      items:
+        selector: "div.thumb-list__item.video-thumb"
+        limit: 100
+        fields:
+          id:
+            read: "attribute"
+            attribute: "data-video-id"
+            transforms:
+              - op: "trim"
+            required: true
+          title:
+            selector: "a.video-thumb-info__name"
+            read: "text"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          detailUrl:
+            selector: "a.video-thumb-info__name"
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+          thumbnailUrl:
+            selector: "img.thumb-image-container__image"
+            read: "attribute"
+            attribute: "src"
+            transforms:
+              - op: "resolveUrl"
+            required: false
+          durationSeconds:
+            selector: "div[data-role=video-duration]"
+            read: "text"
+            transforms:
+              - op: "trim"
+              - op: "parseDuration"
+            required: false
+          maxQuality:
+            selector: "use[id^=format-]"
+            read: "attribute"
+            attribute: "id"
+            transforms:
+              - op: "trim"
+            required: false
+    pagination:
+      mode: "nextLink"
+      next:
+        selector: "a.prev-next-list-link--next"
+        read: "attribute"
+        attribute: "href"
+        transforms:
+          - op: "resolveUrl"
+
+  search:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/search/"
+      query:
+        q: "${input.query}"
+    response:
+      type: "html"
+    reuse:
+      extractFrom: "listing"
+      paginationFrom: "listing"
+
+  details:
+    request:
+      method: "GET"
+      url: "${input.detailUrl}"
+    response:
+      type: "html"
+    extract:
+      fields:
+        title:
+          selector: "h1"
+          read: "text"
+          fallback:
+            selector: "title"
+            read: "text"
+          transforms:
+            - op: "trim"
+          required: true
+
+  playback:
+    steps:
+      - id: "detailPage"
+        request:
+          method: "GET"
+          url: "${input.detailUrl}"
+        response:
+          type: "html"
+        extract:
+          candidates:
+            selector: "link[rel=preload][href*=.m3u8], script"
+            limit: 20
+            fields:
+              url:
+                read: "attribute"
+                attribute: "href"
+                fallback:
+                  read: "data"
+                transforms:
+                  - op: "regexExtract"
+                    pattern: "(https?:\\\\?/\\\\?/[^\"'\\s\\\\]+?\\.m3u8[^\"'\\s\\\\]*)"
+                  - op: "unescapeJson"
+                  - op: "resolveUrl"
+                required: true
+    result:
+      candidatesFrom: "detailPage.candidates"
+
+playback:
+  allowedTypes:
+    - "hls"
+    - "progressive"
+  preserveMediaQueryParameters: true
+  preferredQuality: "highest"
+  onExpired:
+    action: "resolveAgain"
+    maxAttempts: 1
+
+fixtures:
+  - id: "categories-basic"
+    operation: "categories"
+    responseFile: "fixtures/xhamster-html/categories.html"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "url"
+
+  - id: "listing-basic"
+    operation: "listing"
+    responseFile: "fixtures/xhamster-html/listing.html"
+    input:
+      url: "https://xhamster.com/categories/4k"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "detailUrl"
+
+  - id: "details-basic"
+    operation: "details"
+    responseFile: "fixtures/xhamster-html/details.html"
+    input:
+      detailUrl: "https://xhamster.com/videos/sanitized-demo-4k-100001"
+    expected:
+      requiredFields:
+        - "title"
+
+  - id: "playback-basic"
+    operation: "playback"
+    responseFile: "fixtures/xhamster-html/details.html"
+    input:
+      detailUrl: "https://xhamster.com/videos/sanitized-demo-4k-100001"
+    expected:
+      minimumCandidates: 1
+      requiredFields:
+        - "url"
+
+settingsReference:
+  provider: "magicoflolis/Magic-PH"
+  repository: "https://github.com/magicoflolis/Magic-PH"
+  pinnedCommit: "5764d037d9b52009218815152ef4e976c2c62255"
+  license: "MIT"
+  format: "normalized-source-capabilities"
+  website:
+    id: "xhamster"
+    name: "xHamster"
+    catalogHosts:
+      - "xhamster.com"
+      - "www.xhamster.com"
+    imageHosts:
+      - "xhamster.com"
+    mediaHosts:
+      - "xhamster.com"
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: true
+    sourceStatus: "fixture-verified"

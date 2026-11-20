@@ -1,11 +1,14 @@
 package com.harbor.tv.feature.catalog
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,6 +20,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,10 +29,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Precision
+import coil.size.Size
 import com.harbor.tv.core.model.CatalogItem
 import com.harbor.tv.core.model.CategoryItem
+import com.harbor.tv.core.model.LiveStatus
 import com.harbor.tv.core.model.UserProfile
 import com.harbor.tv.core.tvui.HarborColors
 import com.harbor.tv.core.tvui.TvActionButton
@@ -37,8 +53,17 @@ import com.harbor.tv.core.tvui.TvFocusableCard
 import com.harbor.tv.core.tvui.TvStatusBanner
 import com.harbor.tv.core.tvui.TvTagChip
 import com.harbor.tv.core.tvui.TvVideoCard
+import com.harbor.tv.core.tvui.formatDuration
 import com.harbor.tv.core.tvui.formatDurationMs
+import com.harbor.tv.core.tvui.formatTagForDisplay
+import com.harbor.tv.core.tvui.resolveQualityBadge
 import com.harbor.tv.domain.catalog.CatalogRepository
+
+private fun is4kCatalogItem(item: CatalogItem): Boolean {
+    return (item.maxResolutionHeight ?: 0) >= 2160 ||
+        item.maxQualityLabel?.contains("4K", ignoreCase = true) == true ||
+        item.title.contains("4k", ignoreCase = true)
+}
 
 @Composable
 fun HomeScreen(
@@ -48,11 +73,16 @@ fun HomeScreen(
     enabledSourceIds: List<String>,
     quickCategories: List<CategoryItem>,
     rowsBySource: Map<String, List<CatalogItem>>,
+    featuredHomeItem: CatalogItem? = null,
+    only4kFilter: Boolean = false,
     watchHistory: List<CatalogRepository.WatchHistoryRecord>,
     isLoading: Boolean,
     errorMessage: String?,
     lastFocusedKey: String?,
     onFocusKeyChanged: (String) -> Unit,
+    onFeaturedItemFocused: (CatalogItem) -> Unit = {},
+    onToggleOnly4kFilter: () -> Unit = {},
+    onQuickBrowse4k: () -> Unit = {},
     onOpenVideo: (CatalogItem) -> Unit,
     onOpenCategory: (CategoryItem) -> Unit,
     onRefresh: () -> Unit,
@@ -102,14 +132,19 @@ fun HomeScreen(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    TvTagChip(
+                        label = if (only4kFilter) "4K UHD Only: ON" else "4K UHD Only",
+                        selected = only4kFilter,
+                        onClick = onToggleOnly4kFilter
+                    )
+                    TvActionButton(
+                        label = "Browse 4K",
+                        tone = TvButtonTone.ACCENT,
+                        onClick = onQuickBrowse4k
+                    )
                     TvActionButton(
                         label = "Refresh",
                         onClick = onRefresh
-                    )
-                    TvActionButton(
-                        label = "Enable All Bundled",
-                        tone = TvButtonTone.ACCENT,
-                        onClick = onEnableAllBundledSources
                     )
                     TvActionButton(
                         label = "Manage Sources",
@@ -185,6 +220,27 @@ fun HomeScreen(
             }
         }
 
+        val displayedRows = if (only4kFilter) {
+            rowsBySource.mapValues { (_, list) -> list.filter(::is4kCatalogItem) }
+                .filterValues { it.isNotEmpty() }
+        } else {
+            rowsBySource
+        }
+
+        val spotlightItem = featuredHomeItem?.takeIf { !only4kFilter || is4kCatalogItem(it) }
+            ?: displayedRows.values.firstOrNull()?.firstOrNull()
+
+        if (spotlightItem != null) {
+            item(key = "featured_spotlight") {
+                FeaturedCinemaSpotlight(
+                    item = spotlightItem,
+                    focusRequester = requesterFor("home_spotlight"),
+                    onFocused = { onFocusKeyChanged("home_spotlight") },
+                    onOpenAndPlay = { onOpenVideo(spotlightItem) }
+                )
+            }
+        }
+
         if (quickCategories.isNotEmpty()) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -238,7 +294,7 @@ fun HomeScreen(
             }
         }
 
-        rowsBySource.forEach { (sourceId, items) ->
+        displayedRows.forEach { (sourceId, items) ->
             item(key = "row_$sourceId") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
@@ -252,7 +308,10 @@ fun HomeScreen(
                             TvVideoCard(
                                 item = item,
                                 focusRequester = requesterFor(key),
-                                onFocused = { onFocusKeyChanged(key) },
+                                onFocused = {
+                                    onFocusKeyChanged(key)
+                                    onFeaturedItemFocused(item)
+                                },
                                 onClick = { onOpenVideo(item) }
                             )
                         }
@@ -261,12 +320,173 @@ fun HomeScreen(
             }
         }
 
-        if (enabledSourceIds.isNotEmpty() && rowsBySource.isEmpty() && !isLoading) {
+        if (enabledSourceIds.isNotEmpty() && displayedRows.isEmpty() && !isLoading) {
             item {
                 TvStatusBanner(
-                    title = "No Eligible Videos",
-                    body = "Your enabled sources returned no videos matching the active profile's preferences or Strict metadata rules.",
+                    title = if (only4kFilter) "No 4K Items in Current Rows" else "No Eligible Videos",
+                    body = if (only4kFilter) {
+                        "Toggle '4K UHD Only' off or press 'Browse 4K' to search across all enabled sources."
+                    } else {
+                        "Your enabled sources returned no videos matching the active profile's preferences or Strict metadata rules."
+                    },
                     accentColor = HarborColors.WarningAmber
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeaturedCinemaSpotlight(
+    item: CatalogItem,
+    focusRequester: FocusRequester,
+    onFocused: () -> Unit,
+    onOpenAndPlay: () -> Unit
+) {
+    val thumbUrl = item.thumbnailReferences.firstOrNull()?.takeIf { it.isNotBlank() }
+    val qualityBadge = resolveQualityBadge(
+        maxResolutionHeight = item.maxResolutionHeight,
+        maxQualityLabel = item.maxQualityLabel,
+        tags = item.canonicalTags
+    )
+
+    TvFocusableCard(
+        onClick = onOpenAndPlay,
+        modifier = Modifier.fillMaxWidth(),
+        focusRequester = focusRequester,
+        onFocused = onFocused,
+        containerColor = HarborColors.SurfaceElevated,
+        focusedScale = 1.015f,
+        contentPadding = 16.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(22.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(340.dp)
+                    .aspectRatio(16f / 9f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(HarborColors.Background)
+            ) {
+                if (thumbUrl != null) {
+                    val context = LocalContext.current
+                    val req = remember(thumbUrl) {
+                        ImageRequest.Builder(context)
+                            .data(thumbUrl)
+                            .size(Size(640, 360))
+                            .precision(Precision.INEXACT)
+                            .allowRgb565(true)
+                            .crossfade(false)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = req,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color(0x99060911))
+                            )
+                        )
+                )
+                if (qualityBadge != null) {
+                    val (qLabel, qColor) = qualityBadge
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(qColor)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = if (qLabel == "4K") "4K UHD" else qLabel,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = HarborColors.Background,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "SPOTLIGHT",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = HarborColors.Gold4K,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "• ${item.sourceId}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = HarborColors.FocusCyan
+                    )
+                    when (item.liveStatus) {
+                        LiveStatus.LIVE -> Text(
+                            text = "• LIVE",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = HarborColors.DangerRed,
+                            fontWeight = FontWeight.Bold
+                        )
+                        LiveStatus.UPCOMING -> Text(
+                            text = "• UPCOMING",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = HarborColors.WarningAmber
+                        )
+                        LiveStatus.ON_DEMAND -> item.durationSeconds?.let {
+                            Text(
+                                text = "• ${formatDuration(it)}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = HarborColors.AccentTeal
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = HarborColors.TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                val tagsPreview = (item.canonicalTags.ifEmpty { item.sourceTags })
+                    .map(::formatTagForDisplay)
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .take(5)
+                    .joinToString(" • ")
+                if (tagsPreview.isNotBlank()) {
+                    Text(
+                        text = tagsPreview,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = HarborColors.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Text(
+                    text = "Open & Play  ->",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = HarborColors.FocusCyan
                 )
             }
         }
@@ -280,12 +500,14 @@ fun CategoriesScreen(
     categories: List<CategoryItem>,
     selectedCategory: CategoryItem?,
     items: List<CatalogItem>,
+    only4kFilter: Boolean = false,
     nextCursor: String?,
     pagesLoaded: Int,
     isLoading: Boolean,
     errorMessage: String?,
     lastFocusedKey: String?,
     onFocusKeyChanged: (String) -> Unit,
+    onToggleOnly4kFilter: () -> Unit = {},
     onSelectSource: (String) -> Unit,
     onSelectCategory: (CategoryItem) -> Unit,
     onLoadNextPage: () -> Unit,
@@ -344,8 +566,15 @@ fun CategoriesScreen(
             return
         }
 
-        // Source selector row
+        // Source selector row + 4K toggle
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            item {
+                TvTagChip(
+                    label = if (only4kFilter) "4K Only: ON" else "4K Only",
+                    selected = only4kFilter,
+                    onClick = onToggleOnly4kFilter
+                )
+            }
             items(enabledSourceIds) { sourceId ->
                 TvTagChip(
                     label = sourceId,
@@ -397,6 +626,8 @@ fun CategoriesScreen(
             }
         }
 
+        val displayedItems = if (only4kFilter) items.filter(::is4kCatalogItem) else items
+
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 250.dp),
             contentPadding = PaddingValues(bottom = 24.dp),
@@ -404,7 +635,7 @@ fun CategoriesScreen(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.weight(1f)
         ) {
-            items(items, key = { it.compositeId }) { item ->
+            items(displayedItems, key = { it.compositeId }) { item ->
                 val key = "cat_item:${item.compositeId}"
                 TvVideoCard(
                     item = item,

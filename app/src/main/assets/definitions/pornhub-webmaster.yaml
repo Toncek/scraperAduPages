@@ -3,7 +3,7 @@ schemaVersion: "1.0"
 source:
   id: "pornhub-webmaster"
   name: "Pornhub Webmasters API"
-  version: "1.1.0"
+  version: "1.2.0"
   description: "Level 2/3 official Pornhub Webmasters JSON API catalog with embed HLS stream extraction."
   author: "Harbor Reference"
   language: "en"
@@ -62,6 +62,8 @@ taxonomy:
   mappings:
     "HD":
       - "quality.hd"
+    "4K":
+      - "quality.4k"
     "Verified":
       - "trust.verified"
 
@@ -132,6 +134,10 @@ operations:
             transforms:
               - op: "trim"
               - op: "parseDuration"
+            required: false
+          sourceTags:
+            pointer: "/tags"
+            cardinality: "many"
             required: false
     pagination:
       mode: "pageQuery"

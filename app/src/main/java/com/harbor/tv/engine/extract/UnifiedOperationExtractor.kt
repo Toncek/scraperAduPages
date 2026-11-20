@@ -544,6 +544,9 @@ class UnifiedOperationExtractor(
         }
 
         val sourceTags = record.list("sourceTags")
+        val (maxQualityLabel, maxResolutionHeight) = normalizeCatalogQuality(
+            record.firstOrNull("maxQuality") ?: record.firstOrNull("qualityLabel")
+        )
         val completeness = if (sourceTags.isEmpty() && durationSeconds == null && !definition.source.capabilities.live) {
             MetadataCompleteness.PARTIAL
         } else {
@@ -562,6 +565,8 @@ class UnifiedOperationExtractor(
             languages = record.list("languages"),
             contentRating = record.firstOrNull("contentRating"),
             thumbnailReferences = record.list("thumbnailUrl"),
+            maxQualityLabel = maxQualityLabel,
+            maxResolutionHeight = maxResolutionHeight,
             metadataCompleteness = completeness,
             metadataProvenance = operationName
         )
@@ -574,11 +579,16 @@ class UnifiedOperationExtractor(
                 "Playback candidate missing required field 'url'"
             )
         val mimeType = record.firstOrNull("mimeType")
-        val qualityLabel = record.firstOrNull("qualityLabel")
+        val rawQualityLabel = record.firstOrNull("qualityLabel")
             ?: record.firstOrNull("quality")
             ?: record.firstOrNull("label")
         val resolutionHeight = record.firstOrNull("resolutionHeight")?.toIntOrNull()
-            ?: parseResolutionHeight(qualityLabel)
+            ?: inferResolutionHeight(rawQualityLabel, url)
+        val qualityLabel = when {
+            !rawQualityLabel.isNullOrBlank() -> rawQualityLabel.trim()
+            resolutionHeight != null -> if (resolutionHeight >= 2160) "2160p 4K" else "${resolutionHeight}p"
+            else -> null
+        }
         val bitrateKbps = record.firstOrNull("bitrateKbps")?.toIntOrNull()
 
         return PlaybackCandidate(
@@ -606,10 +616,48 @@ class UnifiedOperationExtractor(
         }
     }
 
-    private fun parseResolutionHeight(label: String?): Int? {
-        if (label.isNullOrBlank()) return null
-        val match = Regex("""(\d{3,4})p""", RegexOption.IGNORE_CASE).find(label) ?: return null
-        return match.groupValues[1].toIntOrNull()
+    private fun normalizeCatalogQuality(rawQuality: String?): Pair<String?, Int?> {
+        val cleaned = rawQuality?.trim()?.takeIf { it.isNotEmpty() } ?: return null to null
+        val height = inferResolutionHeight(cleaned, url = null)
+        if (height != null) {
+            val label = when {
+                height >= 2160 -> "4K"
+                height in setOf(1440, 1080, 720, 480, 360, 240) -> "${height}p"
+                else -> "${height}p"
+            }
+            return label to height
+        }
+        if (cleaned.contains("hd", ignoreCase = true)) {
+            return "HD" to 720
+        }
+        return cleaned to null
+    }
+
+    private fun inferResolutionHeight(qualityLabel: String?, url: String? = null): Int? {
+        if (!qualityLabel.isNullOrBlank()) {
+            parseHeightFromText(qualityLabel, allowBareDigits = true)?.let { return it }
+        }
+        if (!url.isNullOrBlank()) {
+            parseHeightFromText(url, allowBareDigits = false)?.let { return it }
+        }
+        return null
+    }
+
+    private fun parseHeightFromText(text: String, allowBareDigits: Boolean): Int? {
+        Regex("""(\d{3,4})p""", RegexOption.IGNORE_CASE).find(text)?.let { match ->
+            match.groupValues[1].toIntOrNull()?.let { return it }
+        }
+        Regex("""\d{3,4}x(\d{3,4})""", RegexOption.IGNORE_CASE).find(text)?.let { match ->
+            match.groupValues[1].toIntOrNull()?.let { return it }
+        }
+        val lower = text.lowercase(Locale.ROOT)
+        if (Regex("""(?:^|[^a-z0-9])(4k|uhd)(?:[^a-z0-9]|$)""").containsMatchIn(lower)) return 2160
+        if (Regex("""(?:^|[^a-z0-9])(2k|qhd)(?:[^a-z0-9]|$)""").containsMatchIn(lower)) return 1440
+        if (Regex("""(?:^|[^a-z0-9])(fhd|full\s*hd)(?:[^a-z0-9]|$)""").containsMatchIn(lower)) return 1080
+        if (allowBareDigits) {
+            text.trim().toIntOrNull()?.takeIf { it in 144..4320 }?.let { return it }
+        }
+        return null
     }
 
     private fun allowedCatalogHostSet(definition: SourceDefinition): Set<String> {

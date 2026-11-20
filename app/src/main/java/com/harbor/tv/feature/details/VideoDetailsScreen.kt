@@ -46,6 +46,7 @@ import com.harbor.tv.core.tvui.TvButtonTone
 import com.harbor.tv.core.tvui.TvFocusableCard
 import com.harbor.tv.core.tvui.TvStatusBanner
 import com.harbor.tv.core.tvui.formatDuration
+import com.harbor.tv.core.tvui.resolveQualityBadge
 import com.harbor.tv.feature.player.PreloadState
 import com.harbor.tv.feature.player.PreloadStatus
 
@@ -156,6 +157,16 @@ fun VideoDetailsScreen(
                                 DetailBadge(text = formatDuration(it), color = HarborColors.AccentTeal)
                             }
                         }
+                        resolveQualityBadge(
+                            maxResolutionHeight = item.maxResolutionHeight,
+                            maxQualityLabel = item.maxQualityLabel,
+                            tags = item.canonicalTags
+                        )?.let { (qLabel, qColor) ->
+                            DetailBadge(
+                                text = if (qLabel == "4K") "4K UHD" else qLabel,
+                                color = qColor
+                            )
+                        }
                         DetailBadge(
                             text = "Metadata: ${item.metadataCompleteness.name}",
                             color = HarborColors.TextSecondary
@@ -223,7 +234,7 @@ fun VideoDetailsScreen(
                         )
                         if (supportsPlayback && !isPrivateSession && playbackPreview != null) {
                             TvActionButton(
-                                label = "Preload to Storage (96 MB)",
+                                label = "Preload to Storage (128 MB)",
                                 tone = TvButtonTone.ACCENT,
                                 onClick = onPreloadMore
                             )

@@ -91,7 +91,9 @@ data class CatalogItem(
     val thumbnailReferences: List<String> = emptyList(),
     val metadataCompleteness: MetadataCompleteness = MetadataCompleteness.COMPLETE,
     val metadataProvenance: String = "listing",
-    val fetchedAt: Long = System.currentTimeMillis()
+    val fetchedAt: Long = System.currentTimeMillis(),
+    val maxQualityLabel: String? = null,
+    val maxResolutionHeight: Int? = null
 ) {
     val compositeId: String get() = "$sourceId::$sourceItemId"
 }
@@ -131,7 +133,7 @@ data class UserProfile(
     val isPrivateSession: Boolean = false,
     val unknownMetadataMode: UnknownMetadataMode = UnknownMetadataMode.STANDARD,
     val qualityPreference: QualityPreference = QualityPreference.HIGHEST_AVAILABLE,
-    val preferredResolutionHeight: Int = 1080,
+    val preferredResolutionHeight: Int = 2160,
     val preferredBitrateKbps: Int = 5000,
     val allowLanSources: Boolean = false,
     val historyEnabled: Boolean = true

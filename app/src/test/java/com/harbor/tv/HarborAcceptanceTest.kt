@@ -61,7 +61,9 @@ class HarborAcceptanceTest {
         "definitions/embedded-json-catalog.yaml",
         "definitions/intermediate-embed-demo.yaml",
         "definitions/xnxx-html.yaml",
-        "definitions/xvideos-html.yaml"
+        "definitions/xvideos-html.yaml",
+        "definitions/porntrex-html.yaml",
+        "definitions/xhamster-html.yaml"
     )
 
     private fun resolveAssetsDir(): File {
@@ -94,7 +96,7 @@ class HarborAcceptanceTest {
 
     @Test
     fun bundledDefinitions_validateAndPassAllOfflineFixtures(): Unit = runBlocking {
-        assertEquals(9, bundledDefinitionFiles.size)
+        assertEquals(11, bundledDefinitionFiles.size)
         for (defPath in bundledDefinitionFiles) {
             val definition = loadValidatedDefinition(defPath)
             val report = fixtureRunner.runFixtures(definition) { fixturePath ->
@@ -591,8 +593,70 @@ class HarborAcceptanceTest {
     }
 
     // -------------------------------------------------------------------------
-    // Live End-to-End Verification for 5 Live Sources
+    // Live End-to-End Verification for 7 Live Sources (including 4K sources)
     // -------------------------------------------------------------------------
+
+    @Test
+    fun offline4kSources_extract4kCandidatesAndMaxQuality(): Unit = runBlocking {
+        val extractor = UnifiedOperationExtractor()
+        val policyEngine = RequestPolicyEngine()
+        val resolver = PlaybackResolver(
+            transport = OfflineFixtureHttpTransport(
+                recordedResponsesByUrl = mapOf(
+                    "https://www.eporner.com/embed/AbCdEfGhIjK/" to readAsset("fixtures/eporner-api-v2/details.html"),
+                    "https://www.porntrex.com/video/100001/sanitized-demo-4k" to readAsset("fixtures/porntrex-html/details.html"),
+                    "https://xhamster.com/videos/sanitized-demo-4k-100001" to readAsset("fixtures/xhamster-html/details.html")
+                ),
+                policyEngine = policyEngine,
+                queuedStepPayloads = ArrayDeque(listOf(readAsset("fixtures/eporner-api-v2/xhr-video.json")))
+            ),
+            policyEngine = policyEngine,
+            extractor = extractor,
+            filterEngine = filterEngine,
+            resolveMediaDns = false
+        )
+        val profile = UserProfile(id = "4k-test", name = "4K Test", qualityPreference = QualityPreference.HIGHEST_AVAILABLE)
+        val prefs = PreferenceConfig()
+
+        // Eporner 4K (2160p)
+        val epornerDef = loadValidatedDefinition("definitions/eporner-api-v2.yaml")
+        val epornerItem = CatalogItem(
+            sourceId = epornerDef.source.id,
+            sourceItemId = "AbCdEfGhIjK",
+            sourcePageUrl = "https://www.eporner.com/embed/AbCdEfGhIjK/",
+            title = "Eporner 4K",
+            canonicalTags = listOf("quality.4k"),
+            metadataCompleteness = MetadataCompleteness.COMPLETE
+        )
+        val epornerPlayback = resolver.resolvePlayback(epornerItem, epornerDef, profile, prefs, setOf(epornerDef.source.id))
+        assertTrue(epornerPlayback.candidates.any { (it.resolutionHeight ?: 0) >= 2160 || it.qualityLabel == "2160p" })
+
+        // PornTrex 4K (2160p MP4)
+        val porntrexDef = loadValidatedDefinition("definitions/porntrex-html.yaml")
+        val porntrexItem = CatalogItem(
+            sourceId = porntrexDef.source.id,
+            sourceItemId = "100001",
+            sourcePageUrl = "https://www.porntrex.com/video/100001/sanitized-demo-4k",
+            title = "PornTrex 4K",
+            canonicalTags = listOf("quality.4k"),
+            metadataCompleteness = MetadataCompleteness.COMPLETE
+        )
+        val porntrexPlayback = resolver.resolvePlayback(porntrexItem, porntrexDef, profile, prefs, setOf(porntrexDef.source.id))
+        assertTrue(porntrexPlayback.candidates.any { it.url.contains("2160p") })
+
+        // xHamster 4K HLS
+        val xhamsterDef = loadValidatedDefinition("definitions/xhamster-html.yaml")
+        val xhamsterItem = CatalogItem(
+            sourceId = xhamsterDef.source.id,
+            sourceItemId = "100001",
+            sourcePageUrl = "https://xhamster.com/videos/sanitized-demo-4k-100001",
+            title = "xHamster 4K",
+            canonicalTags = listOf("quality.4k"),
+            metadataCompleteness = MetadataCompleteness.COMPLETE
+        )
+        val xhamsterPlayback = resolver.resolvePlayback(xhamsterItem, xhamsterDef, profile, prefs, setOf(xhamsterDef.source.id))
+        assertTrue(xhamsterPlayback.candidates.any { it.streamType == PlaybackStreamType.HLS })
+    }
 
     @Test
     fun liveSources_categoriesListingThumbnailsAndPlaybackResolve(): Unit = runBlocking {
@@ -601,7 +665,9 @@ class HarborAcceptanceTest {
             "definitions/redtube-api.yaml",
             "definitions/pornhub-webmaster.yaml",
             "definitions/xnxx-html.yaml",
-            "definitions/xvideos-html.yaml"
+            "definitions/xvideos-html.yaml",
+            "definitions/porntrex-html.yaml",
+            "definitions/xhamster-html.yaml"
         )
         val policyEngine = RequestPolicyEngine()
         val transport = ControlledHttpTransport(policyEngine)

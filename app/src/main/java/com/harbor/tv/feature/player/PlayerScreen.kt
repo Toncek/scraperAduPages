@@ -46,6 +46,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
@@ -289,7 +290,42 @@ fun PlayerScreen(
                         )
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (uiState.decodedHeight > 0) {
+                            val (tierLabel, tierColor) = when {
+                                uiState.decodedHeight >= 2160 -> "4K UHD" to HarborColors.Gold4K
+                                uiState.decodedHeight >= 1440 -> "1440p" to HarborColors.QuadHdViolet
+                                uiState.decodedHeight >= 1080 -> "1080p" to HarborColors.FocusCyan
+                                uiState.decodedHeight >= 720 -> "720p" to HarborColors.AccentTeal
+                                else -> "${uiState.decodedHeight}p" to HarborColors.TextSecondary
+                            }
+                            val hudText = buildString {
+                                append(tierLabel)
+                                if (uiState.decodedWidth > 0) {
+                                    append(" • ${uiState.decodedWidth}×${uiState.decodedHeight}")
+                                }
+                                if (uiState.decodedFrameRate >= 1f) {
+                                    append(" @ ${uiState.decodedFrameRate.toInt()}fps")
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(tierColor.copy(alpha = 0.22f))
+                                    .border(1.dp, tierColor, RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = hudText,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = tierColor,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                         if (uiState.isPrivateSession) {
                             Box(
                                 modifier = Modifier

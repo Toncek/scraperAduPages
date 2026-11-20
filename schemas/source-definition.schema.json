@@ -474,6 +474,7 @@
             "urlEncode",
             "template",
             "regexExtract",
+            "regexExtractAll",
             "unescapeJson",
             "hexChunksToBase36"
           ]

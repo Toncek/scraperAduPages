@@ -15,10 +15,13 @@ object HarborColors {
     val SurfaceCard = Color(0xFF1E293B)
     val SurfaceCardFocused = Color(0xFF273449)
     val SurfaceElevated = Color(0xFF162032)
+    val SurfaceGlass = Color(0xE60F172A)
 
     val FocusCyan = Color(0xFF38BDF8)
     val FocusGlow = Color(0x4438BDF8)
     val AccentTeal = Color(0xFF2DD4BF)
+    val Gold4K = Color(0xFFF59E0B)
+    val QuadHdViolet = Color(0xFFC084FC)
     val SuccessGreen = Color(0xFF34D399)
     val WarningAmber = Color(0xFFFBBF24)
     val DangerRed = Color(0xFFF87171)

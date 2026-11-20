@@ -147,6 +147,34 @@ class TransformationEngine {
                     }
                 }
             }
+            "regexExtractAll" -> {
+                val pattern = transform.pattern ?: ""
+                val regex = try {
+                    Regex(pattern)
+                } catch (e: Exception) {
+                    throw HarborException(
+                        HarborErrorCode.DEFINITION_INVALID,
+                        "Invalid regexExtractAll pattern '$pattern': ${e.message}",
+                        cause = e
+                    )
+                }
+                val group = transform.group
+                val matches = linkedSetOf<String>()
+                for (input in values) {
+                    val bounded = input.take(MAX_REGEX_INPUT_CHARS)
+                    for (match in regex.findAll(bounded).take(20)) {
+                        val extracted = if (group in 0 until match.groupValues.size) {
+                            match.groupValues[group]
+                        } else {
+                            match.groupValues[0]
+                        }
+                        if (extracted.isNotBlank()) {
+                            matches.add(extracted)
+                        }
+                    }
+                }
+                matches.toList()
+            }
             "unescapeJson" -> values.map { unescapeJsonString(it) }
             "hexChunksToBase36" -> values.map { hexChunksToBase36(it) }
             else -> throw HarborException(

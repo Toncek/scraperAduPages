@@ -1,0 +1,298 @@
+schemaVersion: "1.0"
+
+source:
+  id: "porntrex-html"
+  name: "PornTrex Video Catalog"
+  version: "1.2.0"
+  description: "Level 1/3 4K-capable HTML catalog and flashvars MP4 candidate extraction for PornTrex."
+  author: "Harbor Reference"
+  language: "en"
+  baseUrl: "https://www.porntrex.com"
+  enabledByDefault: true
+
+  permission:
+    basis: "public-api"
+    reference: "PornTrex public HTML catalog pages"
+
+  capabilities:
+    categories: true
+    search: true
+    details: true
+    playback: true
+    live: false
+    intermediateTraversal: false
+
+network:
+  httpsOnly: true
+  lanAccess: false
+
+  allowedHosts:
+    catalog:
+      - "www.porntrex.com"
+      - "porntrex.com"
+    images:
+      - "www.porntrex.com"
+      - "*.cdntrex.com"
+    media:
+      - "www.porntrex.com"
+      - "*.cdntrex.com"
+
+  redirects:
+    maxHops: 3
+
+  timeouts:
+    connectMs: 10000
+    readMs: 15000
+    operationMs: 30000
+
+  limits:
+    maxConcurrentRequests: 2
+    minRequestIntervalMs: 500
+    maxCatalogResponseBytes: 2097152
+    maxItemsPerPage: 100
+
+  headers:
+    Accept: "text/html"
+    User-Agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+authentication:
+  type: "none"
+
+taxonomy:
+  namespace: "porntrex-html"
+  mappings:
+    "HD":
+      - "quality.hd"
+    "4K":
+      - "quality.4k"
+
+operations:
+  categories:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/categories/"
+    response:
+      type: "html"
+    extract:
+      items:
+        selector: "a.item[href*='/categories/']"
+        limit: 100
+        fields:
+          id:
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+              - op: "canonicalUrl"
+            required: true
+          title:
+            read: "attribute"
+            attribute: "title"
+            fallback:
+              read: "text"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          url:
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+
+  listing:
+    request:
+      method: "GET"
+      url: "${input.url}"
+    response:
+      type: "html"
+    extract:
+      items:
+        selector: "div.video-item"
+        limit: 100
+        fields:
+          id:
+            read: "attribute"
+            attribute: "data-item-id"
+            transforms:
+              - op: "trim"
+            required: true
+          title:
+            selector: "p.inf a"
+            read: "attribute"
+            attribute: "title"
+            fallback:
+              selector: "p.inf a"
+              read: "text"
+            transforms:
+              - op: "trim"
+              - op: "collapseWhitespace"
+            required: true
+          detailUrl:
+            selector: "a.thumb"
+            read: "attribute"
+            attribute: "href"
+            transforms:
+              - op: "resolveUrl"
+            required: true
+          thumbnailUrl:
+            selector: "img.cover"
+            read: "attribute"
+            attribute: "data-src"
+            fallback:
+              selector: "img.cover"
+              read: "attribute"
+              attribute: "src"
+            transforms:
+              - op: "resolveUrl"
+            required: false
+          durationSeconds:
+            selector: ".durations"
+            read: "text"
+            transforms:
+              - op: "trim"
+              - op: "parseDuration"
+            required: false
+          maxQuality:
+            selector: ".quality"
+            read: "text"
+            transforms:
+              - op: "trim"
+            required: false
+    pagination:
+      mode: "nextLink"
+      next:
+        selector: "li.next a, a.next"
+        read: "attribute"
+        attribute: "href"
+        transforms:
+          - op: "resolveUrl"
+
+  search:
+    request:
+      method: "GET"
+      url: "${source.baseUrl}/search/"
+      query:
+        q: "${input.query}"
+    response:
+      type: "html"
+    reuse:
+      extractFrom: "listing"
+      paginationFrom: "listing"
+
+  details:
+    request:
+      method: "GET"
+      url: "${input.detailUrl}"
+    response:
+      type: "html"
+    extract:
+      fields:
+        title:
+          selector: "h1"
+          read: "text"
+          fallback:
+            selector: "title"
+            read: "text"
+          transforms:
+            - op: "trim"
+          required: true
+
+  playback:
+    steps:
+      - id: "detailPage"
+        request:
+          method: "GET"
+          url: "${input.detailUrl}"
+        response:
+          type: "html"
+        extract:
+          candidates:
+            selector: "script"
+            limit: 20
+            fields:
+              url:
+                read: "data"
+                cardinality: "many"
+                transforms:
+                  - op: "regexExtractAll"
+                    pattern: "video_(?:alt_url\\d*|url)\\s*:\\s*'(https://[^']+\\.mp4/?)'"
+                  - op: "resolveUrl"
+                required: true
+    result:
+      candidatesFrom: "detailPage.candidates"
+
+playback:
+  allowedTypes:
+    - "hls"
+    - "progressive"
+  preserveMediaQueryParameters: true
+  preferredQuality: "highest"
+  onExpired:
+    action: "resolveAgain"
+    maxAttempts: 1
+
+fixtures:
+  - id: "categories-basic"
+    operation: "categories"
+    responseFile: "fixtures/porntrex-html/categories.html"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "url"
+
+  - id: "listing-basic"
+    operation: "listing"
+    responseFile: "fixtures/porntrex-html/listing.html"
+    input:
+      url: "https://www.porntrex.com/categories/4k/"
+    expected:
+      minimumItems: 2
+      requiredFields:
+        - "id"
+        - "title"
+        - "detailUrl"
+
+  - id: "details-basic"
+    operation: "details"
+    responseFile: "fixtures/porntrex-html/details.html"
+    input:
+      detailUrl: "https://www.porntrex.com/video/100001/sanitized-demo-4k"
+    expected:
+      requiredFields:
+        - "title"
+
+  - id: "playback-basic"
+    operation: "playback"
+    responseFile: "fixtures/porntrex-html/details.html"
+    input:
+      detailUrl: "https://www.porntrex.com/video/100001/sanitized-demo-4k"
+    expected:
+      minimumCandidates: 1
+      requiredFields:
+        - "url"
+
+settingsReference:
+  provider: "magicoflolis/Magic-PH"
+  repository: "https://github.com/magicoflolis/Magic-PH"
+  pinnedCommit: "5764d037d9b52009218815152ef4e976c2c62255"
+  license: "MIT"
+  format: "normalized-source-capabilities"
+  website:
+    id: "porntrex"
+    name: "PornTrex"
+    catalogHosts:
+      - "www.porntrex.com"
+      - "porntrex.com"
+    imageHosts:
+      - "www.porntrex.com"
+    mediaHosts:
+      - "www.porntrex.com"
+    desktopSupported: true
+    mobileSupported: true
+    searchSupported: true
+    directVideoSupported: true
+    sourceStatus: "fixture-verified"

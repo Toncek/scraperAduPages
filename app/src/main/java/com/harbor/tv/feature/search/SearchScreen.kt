@@ -46,10 +46,12 @@ fun SearchScreen(
     enabledSourceIds: List<String>,
     selectedSourceFilterId: String?,
     results: List<CatalogItem>,
+    only4kFilter: Boolean = false,
     sourceErrors: Map<String, String>,
     isLoading: Boolean,
     lastFocusedKey: String?,
     onFocusKeyChanged: (String) -> Unit,
+    onToggleOnly4kFilter: () -> Unit = {},
     onQueryChange: (String) -> Unit,
     onSelectSourceFilter: (String?) -> Unit,
     onSearch: (String?) -> Unit,
@@ -69,7 +71,7 @@ fun SearchScreen(
     }
 
     val quickSuggestions = remember {
-        listOf("nature", "alpine", "documentaries", "education", "science", "4k", "english")
+        listOf("4k", "2160p", "1080p", "60fps", "amateur", "hd")
     }
 
     Column(
@@ -160,8 +162,15 @@ fun SearchScreen(
             }
         }
 
-        // Source filter chips
+        // Source filter chips + 4K toggle
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                TvTagChip(
+                    label = if (only4kFilter) "4K Only: ON" else "4K Only",
+                    selected = only4kFilter,
+                    onClick = onToggleOnly4kFilter
+                )
+            }
             item {
                 TvTagChip(
                     label = "All Enabled Sources",
@@ -200,7 +209,17 @@ fun SearchScreen(
             }
         }
 
-        if (!isLoading && query.isNotBlank() && results.isEmpty()) {
+        val displayedResults = if (only4kFilter) {
+            results.filter { item ->
+                (item.maxResolutionHeight ?: 0) >= 2160 ||
+                    item.maxQualityLabel?.contains("4K", ignoreCase = true) == true ||
+                    item.title.contains("4k", ignoreCase = true)
+            }
+        } else {
+            results
+        }
+
+        if (!isLoading && query.isNotBlank() && displayedResults.isEmpty()) {
             TvStatusBanner(
                 title = "No Eligible Results",
                 body = "No items matched '$query' under your active profile's PreferenceFilterEngine rules.",
@@ -215,7 +234,7 @@ fun SearchScreen(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.weight(1f)
         ) {
-            items(results, key = { it.compositeId }) { item ->
+            items(displayedResults, key = { it.compositeId }) { item ->
                 val key = "search:${item.compositeId}"
                 TvVideoCard(
                     item = item,

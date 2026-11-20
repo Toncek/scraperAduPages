@@ -181,7 +181,25 @@ class HtmlExtractionEngine(
                 rejected++
                 missingRequired.addAll(result.missingRequiredFields)
             } else {
-                accepted.add(result.record)
+                val urls = result.record.fields["url"].orEmpty()
+                if (urls.size <= 1) {
+                    accepted.add(result.record)
+                } else {
+                    for (i in urls.indices) {
+                        if (accepted.size >= cap) break
+                        val expandedFields = LinkedHashMap<String, List<String>>(result.record.fields.size)
+                        expandedFields["url"] = listOf(urls[i])
+                        for ((fieldName, fieldValues) in result.record.fields) {
+                            if (fieldName == "url" || fieldValues.isEmpty()) continue
+                            if (fieldName == "subtitleUrls") {
+                                expandedFields[fieldName] = fieldValues
+                            } else {
+                                expandedFields[fieldName] = listOf(fieldValues.getOrNull(i) ?: fieldValues.first())
+                            }
+                        }
+                        accepted.add(ExtractedRecord(expandedFields))
+                    }
+                }
             }
         }
 

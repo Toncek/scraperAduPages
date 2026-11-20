@@ -138,6 +138,8 @@ data class HarborUiState(
 
     val homeRowsBySource: Map<String, List<CatalogItem>> = emptyMap(),
     val homeQuickCategories: List<CategoryItem> = emptyList(),
+    val featuredHomeItem: CatalogItem? = null,
+    val only4kFilter: Boolean = false,
     val watchHistory: List<CatalogRepository.WatchHistoryRecord> = emptyList(),
 
     val selectedCategorySourceId: String? = null,
@@ -544,6 +546,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     preferences = loadedPrefs,
                     homeRowsBySource = emptyMap(),
                     homeQuickCategories = emptyList(),
+                    featuredHomeItem = null,
                     watchHistory = emptyList(),
                     categoriesForSelectedSource = emptyList(),
                     selectedCategory = null,
@@ -829,6 +832,32 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         val items: List<CatalogItem>
     )
 
+    fun toggleOnly4kFilter() {
+        _uiState.update { it.copy(only4kFilter = !it.only4kFilter) }
+    }
+
+    fun setFeaturedHomeItem(item: CatalogItem) {
+        _uiState.update { it.copy(featuredHomeItem = item) }
+    }
+
+    fun quickSearch4k() {
+        _uiState.update { it.copy(searchQuery = "4k") }
+        navigateTo(HarborScreen.SEARCH)
+        executeSearch("4k")
+    }
+
+    private fun pickFeaturedItem(rows: Map<String, List<CatalogItem>>): CatalogItem? {
+        val all = rows.values.flatten()
+        if (all.isEmpty()) return null
+        return all.maxWithOrNull(
+            compareBy<CatalogItem>(
+                { it.maxResolutionHeight ?: 0 },
+                { if (it.maxQualityLabel?.contains("4K", ignoreCase = true) == true) 1 else 0 },
+                { if (it.title.contains("4k", ignoreCase = true)) 1 else 0 }
+            )
+        ) ?: all.firstOrNull()
+    }
+
     fun refreshHome() {
         refreshHomeJob?.cancel()
         refreshHomeJob = viewModelScope.launch {
@@ -841,6 +870,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     it.copy(
                         homeRowsBySource = emptyMap(),
                         homeQuickCategories = emptyList(),
+                        featuredHomeItem = null,
                         isLoading = false
                     )
                 }
@@ -849,11 +879,28 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             val enabledIds = enabledDefs.map { it.source.id }.toSet()
+
+            // Instant cold-start hydration from Room cache (<200ms) before live fetches finish
+            val cachedRows = withContext(Dispatchers.IO) {
+                catalogRepository.getCachedHomeRows(enabledIds.toList(), state.preferences)
+                    .mapValues { (_, items) -> items.take(12) }
+                    .filterValues { it.isNotEmpty() }
+            }
+
             _uiState.update { current ->
+                val initialRows = if (cachedRows.isNotEmpty()) {
+                    cachedRows
+                } else {
+                    current.homeRowsBySource.filterKeys { it in enabledIds }
+                }
+                val initialFeatured = current.featuredHomeItem
+                    ?.takeIf { it.sourceId in enabledIds }
+                    ?: pickFeaturedItem(initialRows)
                 current.copy(
-                    homeRowsBySource = current.homeRowsBySource.filterKeys { it in enabledIds },
+                    homeRowsBySource = initialRows,
                     homeQuickCategories = current.homeQuickCategories.filter { it.sourceId in enabledIds },
-                    isLoading = current.homeRowsBySource.none { (k, v) -> k in enabledIds && v.isNotEmpty() },
+                    featuredHomeItem = initialFeatured,
+                    isLoading = initialRows.isEmpty(),
                     errorMessage = null
                 )
             }
@@ -872,10 +919,17 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                                 val mergedCats = (current.homeQuickCategories + result.categories)
                                     .distinctBy { c -> "${c.sourceId}::${c.id}" }
                                     .take(16)
+                                val currentFeaturedIs4k = (current.featuredHomeItem?.maxResolutionHeight ?: 0) >= 2160
+                                val nextFeatured = if (current.featuredHomeItem == null || !currentFeaturedIs4k) {
+                                    pickFeaturedItem(mergedRows) ?: current.featuredHomeItem
+                                } else {
+                                    current.featuredHomeItem
+                                }
                                 val stillLoading = current.isLoading && mergedRows.isEmpty()
                                 current.copy(
                                     homeRowsBySource = mergedRows,
                                     homeQuickCategories = mergedCats,
+                                    featuredHomeItem = nextFeatured,
                                     isLoading = stillLoading
                                 )
                             }
@@ -1276,6 +1330,26 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 null
             }
 
+            val maxCandHeight = playbackPreview?.candidates
+                ?.maxOfOrNull { it.resolutionHeight ?: 0 } ?: 0
+            val finalVideo = if (maxCandHeight > (enriched.maxResolutionHeight ?: 0)) {
+                val upgradedLabel = when {
+                    maxCandHeight >= 2160 -> "4K"
+                    maxCandHeight >= 1440 -> "1440p"
+                    maxCandHeight >= 1080 -> "1080p"
+                    maxCandHeight >= 720 -> "720p"
+                    else -> playbackPreview?.candidates
+                        ?.firstOrNull { it.resolutionHeight == maxCandHeight }
+                        ?.qualityLabel ?: enriched.maxQualityLabel
+                }
+                enriched.copy(
+                    maxResolutionHeight = maxCandHeight,
+                    maxQualityLabel = upgradedLabel
+                )
+            } else {
+                enriched
+            }
+
             if (playbackPreview != null) {
                 selectedVideoPlaybackResolvedAtMs = System.currentTimeMillis()
             } else {
@@ -1284,7 +1358,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
 
             _uiState.update {
                 it.copy(
-                    selectedVideo = enriched,
+                    selectedVideo = finalVideo,
                     selectedVideoPlayback = playbackPreview,
                     isLoading = false
                 )
@@ -1301,12 +1375,12 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 latestState.videoPreloadEnabled
             ) {
                 playerController.preloadCandidate(
-                    sourceId = enriched.sourceId,
-                    sourceItemId = enriched.sourceItemId,
+                    sourceId = finalVideo.sourceId,
+                    sourceItemId = finalVideo.sourceItemId,
                     candidate = preloadCandidate,
                     refererUrl = playbackPreview.sourcePageUrl,
                     allowLan = latestState.activeProfile.allowLanSources && def.network.allowLan,
-                    maxBytes = 24L * 1024L * 1024L,
+                    maxBytes = 32L * 1024L * 1024L,
                     onFinished = { refreshMediaCacheStats() }
                 )
             }
@@ -1327,7 +1401,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 candidate = candidate,
                 refererUrl = preview.sourcePageUrl,
                 allowLan = state.activeProfile.allowLanSources && def.network.allowLan,
-                maxBytes = 96L * 1024L * 1024L,
+                maxBytes = 128L * 1024L * 1024L,
                 onFinished = { refreshMediaCacheStats() }
             )
         }
