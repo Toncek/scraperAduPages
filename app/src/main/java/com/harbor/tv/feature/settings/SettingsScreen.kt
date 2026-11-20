@@ -58,7 +58,9 @@ fun SettingsScreen(
     autoPlayNextEnabled: Boolean = true,
     focusPreviewEnabled: Boolean = true,
     minResolutionHeight: Int = 0,
+    minDurationSeconds: Int? = null,
     avoidRepeatsEnabled: Boolean = true,
+    hiddenVideosCount: Int = 0,
     tasteProfile: UserTasteProfile = UserTasteProfile(),
     topLabelCombos: List<LabelComboSuggestion> = emptyList(),
     mediaCacheLimitMb: Int = 1536,
@@ -71,7 +73,9 @@ fun SettingsScreen(
     onSetUnknownMetadataMode: (UnknownMetadataMode) -> Unit,
     onSetQualityPreference: (QualityPreference, Int, Int) -> Unit,
     onSetMinResolutionHeight: (Int) -> Unit = {},
+    onSetMinDurationSeconds: (Int?) -> Unit = {},
     onToggleAvoidRepeats: (Boolean) -> Unit = {},
+    onClearHiddenVideos: () -> Unit = {},
     onResetTasteStats: () -> Unit = {},
     onToggleAllowLan: (Boolean) -> Unit,
     onToggleHistoryEnabled: (Boolean) -> Unit,
@@ -222,6 +226,29 @@ fun SettingsScreen(
                                 label = label,
                                 selected = minResolutionHeight == minHeight,
                                 onClick = { onSetMinResolutionHeight(minHeight) }
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Minimum Video Length",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = HarborColors.TextPrimary
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        listOf(
+                            null to "Any Length",
+                            120 to "No Short Clips (2m+)",
+                            300 to "5m+",
+                            600 to "10m+",
+                            1200 to "Full Length (20m+)"
+                        ).forEach { (minSec, label) ->
+                            TvTagChip(
+                                label = label,
+                                selected = minDurationSeconds == minSec,
+                                onClick = { onSetMinDurationSeconds(minSec) }
                             )
                         }
                     }
@@ -430,6 +457,13 @@ fun SettingsScreen(
                             label = "Tag Preferences",
                             onClick = onOpenPreferenceSetup
                         )
+                        if (hiddenVideosCount > 0) {
+                            TvActionButton(
+                                label = "Unhide Videos ($hiddenVideosCount)",
+                                tone = TvButtonTone.ACCENT,
+                                onClick = onClearHiddenVideos
+                            )
+                        }
                     }
                 }
             }

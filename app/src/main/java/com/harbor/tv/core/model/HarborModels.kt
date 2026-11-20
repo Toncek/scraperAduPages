@@ -164,7 +164,8 @@ data class PreferenceConfig(
     val unknownMetadataMode: UnknownMetadataMode = UnknownMetadataMode.STANDARD,
     val requiredCanonicalTagPrefixes: Set<String> = emptySet(),
     val minResolutionHeight: Int = 0,
-    val avoidRepeatsEnabled: Boolean = true
+    val avoidRepeatsEnabled: Boolean = true,
+    val hiddenItemIds: Set<String> = emptySet()
 )
 
 data class LabelComboSuggestion(

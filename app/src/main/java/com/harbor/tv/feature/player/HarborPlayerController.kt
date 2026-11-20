@@ -81,6 +81,8 @@ data class PlayerUiState(
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
     val isEnded: Boolean = false,
+    val playbackSpeed: Float = 1.0f,
+    val aspectResizeMode: Int = 0,
     val currentPositionMs: Long = 0L,
     val durationMs: Long = 0L,
     val isSeekable: Boolean = false,
@@ -289,6 +291,7 @@ class HarborPlayerController(
             .setMinVideoSize(0, clampedMinHeight)
             .setMaxVideoSize(3840, 2160)
             .build()
+        player.setPlaybackSpeed(1.0f)
         currentResolution = resolution
         currentAllowLan = allowLan
         onResolveExpiredCallback = onResolveExpired
@@ -304,6 +307,8 @@ class HarborPlayerController(
             sourceId = resolution.sourceId,
             sourceItemId = resolution.sourceItemId,
             isPrivateSession = isPrivateSession,
+            playbackSpeed = 1.0f,
+            aspectResizeMode = prevQueueState.aspectResizeMode,
             hasNextInQueue = prevQueueState.hasNextInQueue,
             hasPreviousInQueue = prevQueueState.hasPreviousInQueue,
             nextItemTitle = prevQueueState.nextItemTitle,
@@ -360,6 +365,31 @@ class HarborPlayerController(
         val target = positionMs.coerceIn(0L, duration)
         player.seekTo(target)
         _uiState.update { it.copy(currentPositionMs = target, isEnded = false) }
+    }
+
+    fun seekToFraction(fraction: Float) {
+        if (!player.isCurrentMediaItemSeekable) return
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: return
+        val target = (duration * fraction.coerceIn(0f, 1f)).toLong().coerceIn(0L, duration)
+        player.seekTo(target)
+        _uiState.update { it.copy(currentPositionMs = target, isEnded = false) }
+    }
+
+    fun cyclePlaybackSpeed() {
+        val current = _uiState.value.playbackSpeed
+        val next = when {
+            kotlin.math.abs(current - 1.0f) < 0.05f -> 1.25f
+            kotlin.math.abs(current - 1.25f) < 0.05f -> 1.5f
+            kotlin.math.abs(current - 1.5f) < 0.05f -> 2.0f
+            kotlin.math.abs(current - 2.0f) < 0.05f -> 0.75f
+            else -> 1.0f
+        }
+        player.setPlaybackSpeed(next)
+        _uiState.update { it.copy(playbackSpeed = next) }
+    }
+
+    fun cycleAspectResizeMode() {
+        _uiState.update { it.copy(aspectResizeMode = (it.aspectResizeMode + 1) % 3) }
     }
 
     fun selectAudioTrack(option: PlayerTrackOption) {

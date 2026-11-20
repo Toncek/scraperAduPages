@@ -64,6 +64,13 @@ class HarborSettingsStore(
         private fun tasteProfileKey(profileId: String): Preferences.Key<String> {
             return stringPreferencesKey("profile_taste_${profileId.trim()}")
         }
+
+        private fun recentSearchesKey(profileId: String): Preferences.Key<String> {
+            return stringPreferencesKey("profile_recent_searches_${profileId.trim()}")
+        }
+
+        private const val MAX_HIDDEN_ITEM_IDS = 500
+        private const val MAX_RECENT_SEARCHES = 8
     }
 
     val activeProfileIdFlow: Flow<String> = dataStore.data.map { prefs ->
@@ -214,6 +221,46 @@ class HarborSettingsStore(
             prefs.remove(key)
         }
     }
+
+    fun observeRecentSearches(profileId: String): Flow<List<String>> {
+        val key = recentSearchesKey(profileId)
+        return dataStore.data.map { prefs ->
+            decodeRecentSearches(prefs[key])
+        }
+    }
+
+    suspend fun getRecentSearches(profileId: String): List<String> {
+        return observeRecentSearches(profileId).first()
+    }
+
+    suspend fun addRecentSearch(profileId: String, query: String) {
+        val clean = query.trim()
+        if (clean.isEmpty()) return
+        val key = recentSearchesKey(profileId)
+        dataStore.edit { prefs ->
+            val current = decodeRecentSearches(prefs[key])
+            val updated = (listOf(clean) + current.filterNot { it.equals(clean, ignoreCase = true) })
+                .take(MAX_RECENT_SEARCHES)
+            prefs[key] = JsonArray(updated.map { JsonPrimitive(it) }).toString()
+        }
+    }
+
+    suspend fun clearRecentSearches(profileId: String) {
+        val key = recentSearchesKey(profileId)
+        dataStore.edit { prefs ->
+            prefs.remove(key)
+        }
+    }
+
+    private fun decodeRecentSearches(rawJson: String?): List<String> {
+        if (rawJson.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val arr = Json.parseToJsonElement(rawJson) as? JsonArray ?: return emptyList()
+            arr.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf { s -> s.isNotEmpty() } }
+                .distinctBy { it.lowercase() }
+                .take(MAX_RECENT_SEARCHES)
+        }.getOrDefault(emptyList())
+    }
 }
 
 object PreferenceConfigJsonCodec {
@@ -250,6 +297,9 @@ object PreferenceConfigJsonCodec {
             })
             put("minResolutionHeight", config.minResolutionHeight)
             put("avoidRepeatsEnabled", config.avoidRepeatsEnabled)
+            put("hiddenItemIds", buildJsonArray {
+                config.hiddenItemIds.toList().takeLast(500).forEach { add(JsonPrimitive(it)) }
+            })
         }
         return obj.toString()
     }
@@ -284,7 +334,11 @@ object PreferenceConfigJsonCodec {
                 unknownMetadataMode = mode,
                 requiredCanonicalTagPrefixes = decodeStringSet(obj["requiredCanonicalTagPrefixes"] as? JsonArray),
                 minResolutionHeight = obj["minResolutionHeight"]?.jsonPrimitive?.intOrNull ?: 0,
-                avoidRepeatsEnabled = obj["avoidRepeatsEnabled"]?.jsonPrimitive?.booleanOrNull ?: true
+                avoidRepeatsEnabled = obj["avoidRepeatsEnabled"]?.jsonPrimitive?.booleanOrNull ?: true,
+                hiddenItemIds = decodeStringSet(obj["hiddenItemIds"] as? JsonArray)
+                    .toList()
+                    .takeLast(500)
+                    .toSet()
             )
         }.getOrElse {
             PreferenceConfig(profileId = fallbackProfileId)

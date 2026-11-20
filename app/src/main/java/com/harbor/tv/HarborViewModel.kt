@@ -166,6 +166,7 @@ data class HarborUiState(
     val searchQuery: String = "",
     val searchSourceFilterId: String? = null,
     val searchResults: List<CatalogItem> = emptyList(),
+    val recentSearches: List<String> = emptyList(),
     val searchSortMode: CatalogSortMode = CatalogSortMode.DEFAULT,
     val searchErrors: Map<String, String> = emptyMap(),
 
@@ -295,6 +296,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 .copy(unknownMetadataMode = activeProfile.unknownMetadataMode)
             val tasteProfile = settingsStore.getTasteProfile(activeProfile.id)
             val topCombos = tasteEngine.buildTopCombinations(tasteProfile)
+            val recentSearches = settingsStore.getRecentSearches(activeProfile.id)
 
             _uiState.update {
                 it.copy(
@@ -309,7 +311,8 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     mediaCacheLimitMb = cacheLimitMb,
                     preferences = prefs,
                     tasteProfile = tasteProfile,
-                    topLabelCombos = topCombos
+                    topLabelCombos = topCombos,
+                    recentSearches = recentSearches
                 )
             }
             refreshMediaCacheStats()
@@ -576,6 +579,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 .copy(unknownMetadataMode = profile.unknownMetadataMode)
             val loadedTaste = settingsStore.getTasteProfile(profile.id)
             val loadedCombos = tasteEngine.buildTopCombinations(loadedTaste)
+            val loadedRecentSearches = settingsStore.getRecentSearches(profile.id)
 
             // Spec 25.3: Switching profiles clears old visible results immediately
             activePaginationSession = null
@@ -585,6 +589,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     preferences = loadedPrefs,
                     tasteProfile = loadedTaste,
                     topLabelCombos = loadedCombos,
+                    recentSearches = loadedRecentSearches,
                     personalizedFreshItems = emptyList(),
                     homeRowsBySource = emptyMap(),
                     homeQuickCategories = emptyList(),
@@ -849,6 +854,97 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun setMinDurationSeconds(seconds: Int?) {
+        val sanitized = seconds?.takeIf { it > 0 }
+        val updated = _uiState.value.preferences.copy(minDurationSeconds = sanitized)
+        savePreferences(updated)
+        _uiState.update {
+            it.copy(
+                statusMessage = if (sanitized == null) {
+                    "Minimum duration restriction removed"
+                } else {
+                    "Minimum video duration set to ${sanitized / 60} min"
+                }
+            )
+        }
+    }
+
+    fun hideVideo(item: CatalogItem) {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val updatedPrefs = state.preferences.copy(
+                hiddenItemIds = state.preferences.hiddenItemIds + item.compositeId
+            )
+            settingsStore.savePreferences(updatedPrefs)
+
+            var updatedTaste = state.tasteProfile
+            var updatedCombos = state.topLabelCombos
+            if (!state.isPrivateSession) {
+                updatedTaste = tasteEngine.recordDislike(state.tasteProfile, item)
+                updatedCombos = tasteEngine.buildTopCombinations(updatedTaste)
+                settingsStore.saveTasteProfile(updatedTaste)
+            }
+
+            rawCategoryItems = rawCategoryItems.filterNot { it.compositeId == item.compositeId }
+            rawSearchResults = rawSearchResults.filterNot { it.compositeId == item.compositeId }
+
+            _uiState.update { current ->
+                val filteredRows = current.homeRowsBySource
+                    .mapValues { (_, list) -> list.filterNot { it.compositeId == item.compositeId } }
+                    .filterValues { it.isNotEmpty() }
+                current.copy(
+                    preferences = updatedPrefs,
+                    tasteProfile = updatedTaste,
+                    topLabelCombos = updatedCombos,
+                    homeRowsBySource = filteredRows,
+                    personalizedFreshItems = current.personalizedFreshItems.filterNot { it.compositeId == item.compositeId },
+                    featuredHomeItem = current.featuredHomeItem?.takeUnless { it.compositeId == item.compositeId }
+                        ?: pickFeaturedItem(filteredRows),
+                    categoryItems = current.categoryItems.filterNot { it.compositeId == item.compositeId },
+                    searchResults = current.searchResults.filterNot { it.compositeId == item.compositeId },
+                    favorites = current.favorites.filterNot { it.compositeId == item.compositeId },
+                    watchHistory = current.watchHistory.filterNot { it.item.compositeId == item.compositeId },
+                    selectedVideo = current.selectedVideo?.takeUnless { it.compositeId == item.compositeId },
+                    statusMessage = "Hid '${item.title}'"
+                )
+            }
+            if (state.currentScreen == HarborScreen.VIDEO_DETAILS) {
+                navigateBack()
+            }
+        }
+    }
+
+    fun clearHiddenVideos() {
+        val updated = _uiState.value.preferences.copy(hiddenItemIds = emptySet())
+        savePreferences(updated)
+        _uiState.update { it.copy(statusMessage = "Cleared hidden videos list") }
+    }
+
+    fun clearRecentSearches() {
+        viewModelScope.launch {
+            settingsStore.clearRecentSearches(_uiState.value.activeProfile.id)
+            _uiState.update {
+                it.copy(
+                    recentSearches = emptyList(),
+                    statusMessage = "Recent searches cleared"
+                )
+            }
+        }
+    }
+
+    fun removeWatchHistoryItem(compositeId: String) {
+        viewModelScope.launch {
+            val profileId = _uiState.value.activeProfile.id
+            db.watchHistoryDao().deleteEntry(profileId, compositeId)
+            _uiState.update { current ->
+                current.copy(
+                    watchHistory = current.watchHistory.filterNot { it.item.compositeId == compositeId },
+                    statusMessage = "Removed video from watch history"
+                )
+            }
+        }
+    }
+
     fun setMediaCacheLimitMb(limitMb: Int) {
         viewModelScope.launch {
             val clamped = limitMb.coerceIn(
@@ -894,6 +990,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
             val profileId = _uiState.value.activeProfile.id
             catalogRepository.clearWatchHistory(profileId)
             settingsStore.resetTasteProfile(profileId)
+            settingsStore.clearRecentSearches(profileId)
             val emptyTaste = UserTasteProfile(profileId = profileId)
             val loader = Coil.imageLoader(appContext)
             loader.memoryCache?.clear()
@@ -906,10 +1003,11 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update {
                 it.copy(
                     watchHistory = emptyList(),
+                    recentSearches = emptyList(),
                     tasteProfile = emptyTaste,
                     topLabelCombos = emptyList(),
                     personalizedFreshItems = emptyList(),
-                    statusMessage = "Cleared catalog, image, HTTP, and media caches, taste stats, and watch history"
+                    statusMessage = "Cleared catalog, image, HTTP, and media caches, taste stats, recent searches, and watch history"
                 )
             }
         }
@@ -1611,6 +1709,14 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, searchErrors = emptyMap()) }
             val state = _uiState.value
+            if (!state.isPrivateSession) {
+                settingsStore.addRecentSearch(state.activeProfile.id, q)
+                _uiState.update { cur ->
+                    val updated = (listOf(q) + cur.recentSearches.filterNot { it.equals(q, ignoreCase = true) })
+                        .take(10)
+                    cur.copy(recentSearches = updated)
+                }
+            }
             val sourceScope = state.searchSourceFilterId?.let { setOf(it) }
             val result = catalogRepository.search(
                 query = q,

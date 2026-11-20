@@ -27,7 +27,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -905,18 +908,22 @@ fun CategoriesScreen(
 @Composable
 fun FavoritesScreen(
     favorites: List<CatalogItem>,
+    watchHistory: List<CatalogRepository.WatchHistoryRecord> = emptyList(),
+    isPrivateSession: Boolean = false,
     previewEnabled: Boolean = true,
     lastFocusedKey: String?,
     onFocusKeyChanged: (String) -> Unit,
     onOpenVideo: (CatalogItem) -> Unit,
     onRemoveFavorite: (CatalogItem) -> Unit,
+    onRemoveHistoryItem: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var selectedTab by remember { mutableIntStateOf(0) }
     val restoreRequesters = remember { mutableMapOf<String, FocusRequester>() }
     fun requesterFor(key: String): FocusRequester =
         restoreRequesters.getOrPut(key) { FocusRequester() }
 
-    LaunchedEffect(lastFocusedKey, favorites) {
+    LaunchedEffect(lastFocusedKey, favorites, watchHistory, selectedTab) {
         val target = lastFocusedKey ?: return@LaunchedEffect
         restoreRequesters[target]?.let { req ->
             runCatching { req.requestFocus() }
@@ -930,46 +937,132 @@ fun FavoritesScreen(
             .padding(horizontal = 28.dp, vertical = 22.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            text = "Favorites",
-            style = MaterialTheme.typography.headlineMedium,
-            color = HarborColors.TextPrimary
-        )
-        Text(
-            text = "Saved videos for this profile, filtered automatically by your preferences.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = HarborColors.TextSecondary
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = if (selectedTab == 0) "Saved Favorites" else "Watch History",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = HarborColors.TextPrimary
+                )
+                Text(
+                    text = if (selectedTab == 0) {
+                        "Saved videos for this profile, filtered automatically by your preferences."
+                    } else {
+                        "Recently watched videos with saved resume positions."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = HarborColors.TextSecondary
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TvTagChip(
+                    label = "Saved Favorites (${favorites.size})",
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 }
+                )
+                TvTagChip(
+                    label = "Watch History (${watchHistory.size})",
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 }
+                )
+            }
+        }
 
-        if (favorites.isEmpty()) {
-            TvStatusBanner(
-                title = "No Saved Favorites Yet",
-                body = "Open any video and choose Add to Favorites to save it here.",
-                accentColor = HarborColors.FocusCyan
-            )
+        if (selectedTab == 0) {
+            if (favorites.isEmpty()) {
+                TvStatusBanner(
+                    title = "No Saved Favorites Yet",
+                    body = "Open any video and choose Favorite to save it here.",
+                    accentColor = HarborColors.FocusCyan
+                )
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 264.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(favorites, key = { it.compositeId }) { item ->
+                        val key = "fav:${item.compositeId}"
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TvVideoCard(
+                                item = item,
+                                focusRequester = requesterFor(key),
+                                onFocused = { onFocusKeyChanged(key) },
+                                previewEnabled = previewEnabled,
+                                onClick = { onOpenVideo(item) }
+                            )
+                            TvActionButton(
+                                label = "Remove",
+                                tone = TvButtonTone.DANGER,
+                                onClick = { onRemoveFavorite(item) },
+                                modifier = Modifier.width(276.dp)
+                            )
+                        }
+                    }
+                }
+            }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 264.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(favorites, key = { it.compositeId }) { item ->
-                    val key = "fav:${item.compositeId}"
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TvVideoCard(
-                            item = item,
-                            focusRequester = requesterFor(key),
-                            onFocused = { onFocusKeyChanged(key) },
-                            previewEnabled = previewEnabled,
-                            onClick = { onOpenVideo(item) }
-                        )
-                        TvActionButton(
-                            label = "Remove",
-                            tone = TvButtonTone.DANGER,
-                            onClick = { onRemoveFavorite(item) },
-                            modifier = Modifier.width(276.dp)
-                        )
+            if (watchHistory.isEmpty()) {
+                TvStatusBanner(
+                    title = if (isPrivateSession) "Private Session Active" else "No Watch History Yet",
+                    body = if (isPrivateSession) {
+                        "Watch history is paused during Private Session mode."
+                    } else {
+                        "Videos you watch will appear here so you can resume where you left off."
+                    },
+                    accentColor = if (isPrivateSession) HarborColors.PrivatePurple else HarborColors.FocusCyan
+                )
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 264.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(watchHistory, key = { "hist_${it.item.compositeId}" }) { record ->
+                        val item = record.item
+                        val key = "hist:${item.compositeId}"
+                        val durationMs = (item.durationSeconds ?: 0) * 1000L
+                        val progress = if (durationMs > 0L && record.resumePositionMs > 0L) {
+                            (record.resumePositionMs.toFloat() / durationMs.toFloat()).coerceIn(0.02f, 1f)
+                        } else {
+                            null
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TvVideoCard(
+                                item = item,
+                                focusRequester = requesterFor(key),
+                                onFocused = { onFocusKeyChanged(key) },
+                                progressFraction = progress,
+                                previewEnabled = previewEnabled,
+                                onClick = { onOpenVideo(item) }
+                            )
+                            Row(
+                                modifier = Modifier.width(276.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (record.resumePositionMs > 0L) {
+                                        "Resume ${formatDurationMs(record.resumePositionMs)}"
+                                    } else {
+                                        "Watched"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = HarborColors.AccentTeal
+                                )
+                                TvActionButton(
+                                    label = "Remove",
+                                    tone = TvButtonTone.DANGER,
+                                    onClick = { onRemoveHistoryItem(item.compositeId) }
+                                )
+                            }
+                        }
                     }
                 }
             }

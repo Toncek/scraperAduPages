@@ -54,12 +54,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.harbor.tv.core.tvui.HarborColors
 import com.harbor.tv.core.tvui.TvActionButton
 import com.harbor.tv.core.tvui.TvButtonTone
 import com.harbor.tv.core.tvui.TvFocusableCard
 import com.harbor.tv.core.tvui.TvStatusBanner
+import com.harbor.tv.core.tvui.TvTagChip
 import com.harbor.tv.core.tvui.formatDurationMs
 import kotlinx.coroutines.delay
 
@@ -77,6 +79,8 @@ fun PlayerScreen(
     onPlayPrevious: () -> Unit = {},
     onPlayNext: () -> Unit = {},
     autoPlayNextEnabled: Boolean = true,
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by controller.uiState.collectAsState()
@@ -230,6 +234,14 @@ fun PlayerScreen(
             update = { view ->
                 if (view.player !== controller.player) {
                     view.player = controller.player
+                }
+                val targetResizeMode = when (uiState.aspectResizeMode) {
+                    1 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    2 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                    else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                }
+                if (view.resizeMode != targetResizeMode) {
+                    view.resizeMode = targetResizeMode
                 }
             },
             modifier = Modifier.fillMaxSize()
@@ -403,6 +415,14 @@ fun PlayerScreen(
                             }
                         }
                         TvActionButton(
+                            label = if (isFavorite) "♥ Saved" else "♡ Favorite",
+                            tone = if (isFavorite) TvButtonTone.ACCENT else TvButtonTone.SECONDARY,
+                            onClick = {
+                                onToggleFavorite()
+                                bumpInteraction()
+                            }
+                        )
+                        TvActionButton(
                             label = "Exit",
                             tone = TvButtonTone.SECONDARY,
                             onClick = {
@@ -510,6 +530,50 @@ fun PlayerScreen(
                         }
                     }
 
+                    if (uiState.isSeekable && uiState.durationMs >= 180_000L) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TvTagChip(
+                                label = "-60s",
+                                onClick = {
+                                    controller.seekBy(-60_000L)
+                                    bumpInteraction()
+                                }
+                            )
+                            TvTagChip(
+                                label = "25%",
+                                onClick = {
+                                    controller.seekToFraction(0.25f)
+                                    bumpInteraction()
+                                }
+                            )
+                            TvTagChip(
+                                label = "50%",
+                                onClick = {
+                                    controller.seekToFraction(0.50f)
+                                    bumpInteraction()
+                                }
+                            )
+                            TvTagChip(
+                                label = "75%",
+                                onClick = {
+                                    controller.seekToFraction(0.75f)
+                                    bumpInteraction()
+                                }
+                            )
+                            TvTagChip(
+                                label = "+60s",
+                                onClick = {
+                                    controller.seekBy(60_000L)
+                                    bumpInteraction()
+                                }
+                            )
+                        }
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -567,6 +631,32 @@ fun PlayerScreen(
                         }
 
                         Spacer(modifier = Modifier.weight(1f))
+
+                        val speedLabel = if (uiState.playbackSpeed % 1f == 0f) {
+                            "${uiState.playbackSpeed.toInt()}.0x"
+                        } else {
+                            "${uiState.playbackSpeed}x"
+                        }
+                        TvActionButton(
+                            label = "Speed ($speedLabel)",
+                            onClick = {
+                                controller.cyclePlaybackSpeed()
+                                bumpInteraction()
+                            }
+                        )
+
+                        val aspectLabel = when (uiState.aspectResizeMode) {
+                            1 -> "Zoom"
+                            2 -> "Fill"
+                            else -> "Fit"
+                        }
+                        TvActionButton(
+                            label = aspectLabel,
+                            onClick = {
+                                controller.cycleAspectResizeMode()
+                                bumpInteraction()
+                            }
+                        )
 
                         TvActionButton(
                             label = "Quality (${uiState.candidates.size})",

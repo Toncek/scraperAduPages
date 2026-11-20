@@ -60,6 +60,7 @@ fun SearchScreen(
     sortMode: CatalogSortMode = CatalogSortMode.DEFAULT,
     previewEnabled: Boolean = true,
     topLabelCombos: List<LabelComboSuggestion> = emptyList(),
+    recentSearches: List<String> = emptyList(),
     sourceErrors: Map<String, String>,
     isLoading: Boolean,
     lastFocusedKey: String?,
@@ -67,6 +68,7 @@ fun SearchScreen(
     onToggleOnly4kFilter: () -> Unit = {},
     onSelectSortMode: (CatalogSortMode) -> Unit = {},
     onApplyLabelCombo: (LabelComboSuggestion) -> Unit = {},
+    onClearRecentSearches: () -> Unit = {},
     onQueryChange: (String) -> Unit,
     onSelectSourceFilter: (String?) -> Unit,
     onSearch: (String?) -> Unit,
@@ -209,6 +211,38 @@ fun SearchScreen(
                                 else -> onQueryChange(query + k.lowercase())
                             }
                         }
+                    )
+                }
+            }
+        }
+
+        // Recent Searches strip
+        if (recentSearches.isNotEmpty()) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                item(key = "recent_label") {
+                    Text(
+                        text = "Recent Searches:",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = HarborColors.TextSecondary
+                    )
+                }
+                items(recentSearches, key = { "recent_$it" }) { term ->
+                    TvTagChip(
+                        label = term,
+                        selected = query.equals(term, ignoreCase = true),
+                        onClick = {
+                            onQueryChange(term)
+                            onSearch(term)
+                        }
+                    )
+                }
+                item(key = "recent_clear") {
+                    TvTagChip(
+                        label = "Clear",
+                        onClick = onClearRecentSearches
                     )
                 }
             }

@@ -116,6 +116,32 @@ class UserTasteEngine {
         return current.copy(seenItemIds = updatedSeen)
     }
 
+    fun recordDislike(
+        current: UserTasteProfile,
+        item: CatalogItem,
+        penalty: Double = 1.5
+    ): UserTasteProfile {
+        val itemLabels = extractItemLabels(item)
+        val updatedLabels = current.labelScores.toMutableMap()
+        if (penalty > 0.0) {
+            for (label in itemLabels) {
+                val existingScore = updatedLabels[label] ?: continue
+                val nextScore = existingScore - penalty
+                if (nextScore <= 0.0) {
+                    updatedLabels.remove(label)
+                } else {
+                    updatedLabels[label] = nextScore
+                }
+            }
+        }
+        val updatedSeen = appendToLru(current.seenItemIds, listOf(item.compositeId))
+        return current.copy(
+            labelScores = pruneScores(updatedLabels),
+            seenItemIds = updatedSeen,
+            totalInteractions = current.totalInteractions + 1
+        )
+    }
+
     fun buildTopCombinations(
         taste: UserTasteProfile,
         limit: Int = 6

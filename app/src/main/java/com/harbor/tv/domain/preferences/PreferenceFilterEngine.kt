@@ -135,6 +135,10 @@ class PreferenceFilterEngine {
         item: CatalogItem,
         preferences: PreferenceConfig
     ): Boolean {
+        if (item.compositeId in preferences.hiddenItemIds) {
+            return false
+        }
+
         when (item.liveStatus) {
             LiveStatus.LIVE -> if (!preferences.includeLive) return false
             LiveStatus.ON_DEMAND -> if (!preferences.includeOnDemand) return false

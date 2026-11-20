@@ -80,6 +80,7 @@ fun VideoDetailsScreen(
     onPlayNow: (PlaybackCandidate?) -> Unit,
     onPreloadMore: () -> Unit = {},
     onToggleFavorite: () -> Unit,
+    onHideVideo: () -> Unit = {},
     onRefreshDetails: () -> Unit,
     onBack: () -> Unit,
     onSearchTag: (String) -> Unit = {},
@@ -292,6 +293,11 @@ fun VideoDetailsScreen(
                                 onClick = onPreloadMore
                             )
                         }
+                        TvActionButton(
+                            label = "Hide Video",
+                            tone = TvButtonTone.DANGER,
+                            onClick = onHideVideo
+                        )
                         TvActionButton(
                             label = "Back",
                             onClick = onBack

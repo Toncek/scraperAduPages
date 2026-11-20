@@ -275,6 +275,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         sortMode = state.searchSortMode,
                         previewEnabled = state.focusPreviewEnabled,
                         topLabelCombos = state.topLabelCombos,
+                        recentSearches = state.recentSearches,
                         sourceErrors = state.searchErrors,
                         isLoading = state.isLoading,
                         lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.SEARCH],
@@ -282,6 +283,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         onToggleOnly4kFilter = { viewModel.toggleOnly4kFilter() },
                         onSelectSortMode = { mode -> viewModel.setSearchSortMode(mode) },
                         onApplyLabelCombo = { combo -> viewModel.applyLabelCombo(combo) },
+                        onClearRecentSearches = { viewModel.clearRecentSearches() },
                         onQueryChange = { q -> viewModel.updateSearchQuery(q) },
                         onSelectSourceFilter = { id -> viewModel.setSearchSourceFilter(id) },
                         onSearch = { q -> viewModel.executeSearch(q) },
@@ -306,6 +308,9 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         onToggleFavorite = {
                             state.selectedVideo?.let { viewModel.toggleFavorite(it) }
                         },
+                        onHideVideo = {
+                            state.selectedVideo?.let { viewModel.hideVideo(it) }
+                        },
                         onSearchTag = { tag -> viewModel.searchByTag(tag) },
                         onRefreshDetails = { viewModel.refreshSelectedVideoDetails() },
                         onBack = { viewModel.navigateBack() }
@@ -318,18 +323,25 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         onExitPlayback = { viewModel.navigateBack() },
                         onPlayPrevious = { viewModel.playPreviousInQueue() },
                         onPlayNext = { viewModel.playNextInQueue() },
-                        autoPlayNextEnabled = state.autoPlayNextEnabled
+                        autoPlayNextEnabled = state.autoPlayNextEnabled,
+                        isFavorite = state.selectedVideoIsFavorite,
+                        onToggleFavorite = {
+                            state.selectedVideo?.let { viewModel.toggleFavorite(it) }
+                        }
                     )
                 }
 
                 HarborScreen.FAVORITES -> {
                     FavoritesScreen(
                         favorites = state.favorites,
+                        watchHistory = state.watchHistory,
+                        isPrivateSession = state.isPrivateSession,
                         previewEnabled = state.focusPreviewEnabled,
                         lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.FAVORITES],
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.FAVORITES, key) },
                         onOpenVideo = { item -> viewModel.openVideoDetails(item) },
-                        onRemoveFavorite = { item -> viewModel.toggleFavorite(item) }
+                        onRemoveFavorite = { item -> viewModel.toggleFavorite(item) },
+                        onRemoveHistoryItem = { compositeId -> viewModel.removeWatchHistoryItem(compositeId) }
                     )
                 }
 
@@ -394,7 +406,9 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         autoPlayNextEnabled = state.autoPlayNextEnabled,
                         focusPreviewEnabled = state.focusPreviewEnabled,
                         minResolutionHeight = state.preferences.minResolutionHeight,
+                        minDurationSeconds = state.preferences.minDurationSeconds,
                         avoidRepeatsEnabled = state.preferences.avoidRepeatsEnabled,
+                        hiddenVideosCount = state.preferences.hiddenItemIds.size,
                         tasteProfile = state.tasteProfile,
                         topLabelCombos = state.topLabelCombos,
                         mediaCacheLimitMb = state.mediaCacheLimitMb,
@@ -409,7 +423,9 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                             viewModel.setQualityPreference(quality, res, kbps)
                         },
                         onSetMinResolutionHeight = { minH -> viewModel.setMinResolutionHeight(minH) },
+                        onSetMinDurationSeconds = { sec -> viewModel.setMinDurationSeconds(sec) },
                         onToggleAvoidRepeats = { enabled -> viewModel.setAvoidRepeatsEnabled(enabled) },
+                        onClearHiddenVideos = { viewModel.clearHiddenVideos() },
                         onResetTasteStats = { viewModel.resetTasteStats() },
                         onToggleAllowLan = { allow -> viewModel.setAllowLanSources(allow) },
                         onToggleHistoryEnabled = { enabled -> viewModel.setHistoryEnabled(enabled) },

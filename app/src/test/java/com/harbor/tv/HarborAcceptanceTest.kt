@@ -642,6 +642,89 @@ class HarborAcceptanceTest {
         )
     }
 
+    @Test
+    fun hiddenVideosAndMinDuration_filterBeforeArtworkAndPenalizeDislikedLabels() {
+        val shortClip = CatalogItem(
+            sourceId = "src1",
+            sourceItemId = "short1",
+            sourcePageUrl = "https://video.example.org/watch/short1",
+            title = "Short 60s Preview",
+            durationSeconds = 60,
+            sourceTags = listOf("Preview"),
+            thumbnailReferences = listOf("https://images.example.org/short1.jpg")
+        )
+        val hiddenMovie = CatalogItem(
+            sourceId = "src1",
+            sourceItemId = "hidden1",
+            sourcePageUrl = "https://video.example.org/watch/hidden1",
+            title = "Hidden Full Movie",
+            durationSeconds = 900,
+            sourceTags = listOf("4K"),
+            maxResolutionHeight = 2160,
+            thumbnailReferences = listOf("https://images.example.org/hidden1.jpg")
+        )
+        val dislikedMovie = CatalogItem(
+            sourceId = "src1",
+            sourceItemId = "dislike1",
+            sourcePageUrl = "https://video.example.org/watch/dislike1",
+            title = "Unwanted Category Movie",
+            durationSeconds = 600,
+            sourceTags = listOf("UnwantedTag"),
+            thumbnailReferences = listOf("https://images.example.org/dislike1.jpg")
+        )
+        val eligibleMovie = CatalogItem(
+            sourceId = "src1",
+            sourceItemId = "good1",
+            sourcePageUrl = "https://video.example.org/watch/good1",
+            title = "Eligible 4K Feature",
+            durationSeconds = 1200,
+            sourceTags = listOf("4K", "Documentary"),
+            maxResolutionHeight = 2160,
+            thumbnailReferences = listOf("https://images.example.org/good1.jpg")
+        )
+
+        val prefs = PreferenceConfig(
+            minDurationSeconds = 120,
+            hiddenItemIds = setOf(hiddenMovie.compositeId)
+        )
+        val partition = filterEngine.partitionAndStripRejectedArtwork(
+            items = listOf(shortClip, hiddenMovie, dislikedMovie, eligibleMovie),
+            preferences = prefs,
+            enabledSourceIds = setOf("src1")
+        )
+
+        assertEquals(
+            setOf(dislikedMovie.compositeId, eligibleMovie.compositeId),
+            partition.eligible.map { it.compositeId }.toSet()
+        )
+        assertEquals(
+            setOf(shortClip.compositeId, hiddenMovie.compositeId),
+            partition.rejectedWithoutArtwork.map { it.compositeId }.toSet()
+        )
+        assertTrue(partition.rejectedWithoutArtwork.all { it.thumbnailReferences.isEmpty() })
+
+        val tasteEngine = UserTasteEngine()
+        var taste = UserTasteProfile(profileId = "dislike-test")
+        taste = tasteEngine.recordInteraction(taste, eligibleMovie, weight = 2.0)
+        taste = tasteEngine.recordInteraction(taste, dislikedMovie, weight = 3.0)
+        val beforeDislike = taste.labelScores["unwantedtag"] ?: 0.0
+        assertEquals(3.0, beforeDislike, 0.01)
+
+        taste = tasteEngine.recordDislike(taste, dislikedMovie, penalty = 1.5)
+        assertEquals(1.5, taste.labelScores["unwantedtag"] ?: 0.0, 0.01)
+        taste = tasteEngine.recordDislike(taste, dislikedMovie, penalty = 2.0)
+        assertTrue(taste.labelScores["unwantedtag"] == null)
+        assertTrue(dislikedMovie.compositeId in taste.seenItemIds)
+
+        val ranked = tasteEngine.rankFreshAndPersonalized(
+            items = partition.eligible,
+            taste = taste,
+            watchedCompositeIds = emptySet(),
+            avoidRepeats = true
+        )
+        assertEquals(eligibleMovie.compositeId, ranked.first().compositeId)
+    }
+
     // -------------------------------------------------------------------------
     // Section 25.4: Playback & URL Expiry Tests
     // -------------------------------------------------------------------------
