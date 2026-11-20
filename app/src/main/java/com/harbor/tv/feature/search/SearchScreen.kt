@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import com.harbor.tv.core.model.CatalogItem
+import com.harbor.tv.core.model.CatalogSortMode
 import com.harbor.tv.core.tvui.HarborColors
 import com.harbor.tv.core.tvui.TvActionButton
 import com.harbor.tv.core.tvui.TvButtonTone
@@ -47,11 +48,13 @@ fun SearchScreen(
     selectedSourceFilterId: String?,
     results: List<CatalogItem>,
     only4kFilter: Boolean = false,
+    sortMode: CatalogSortMode = CatalogSortMode.DEFAULT,
     sourceErrors: Map<String, String>,
     isLoading: Boolean,
     lastFocusedKey: String?,
     onFocusKeyChanged: (String) -> Unit,
     onToggleOnly4kFilter: () -> Unit = {},
+    onSelectSortMode: (CatalogSortMode) -> Unit = {},
     onQueryChange: (String) -> Unit,
     onSelectSourceFilter: (String?) -> Unit,
     onSearch: (String?) -> Unit,
@@ -162,13 +165,34 @@ fun SearchScreen(
             }
         }
 
-        // Source filter chips + 4K toggle
+        // Source filter chips + 4K toggle + Sort chips
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 TvTagChip(
                     label = if (only4kFilter) "4K Only: ON" else "4K Only",
                     selected = only4kFilter,
                     onClick = onToggleOnly4kFilter
+                )
+            }
+            item {
+                TvTagChip(
+                    label = "Sort: Default",
+                    selected = sortMode == CatalogSortMode.DEFAULT,
+                    onClick = { onSelectSortMode(CatalogSortMode.DEFAULT) }
+                )
+            }
+            item {
+                TvTagChip(
+                    label = "Sort: 4K First",
+                    selected = sortMode == CatalogSortMode.QUALITY_FIRST,
+                    onClick = { onSelectSortMode(CatalogSortMode.QUALITY_FIRST) }
+                )
+            }
+            item {
+                TvTagChip(
+                    label = "Sort: Longest",
+                    selected = sortMode == CatalogSortMode.LONGEST_FIRST,
+                    onClick = { onSelectSortMode(CatalogSortMode.LONGEST_FIRST) }
                 )
             }
             item {

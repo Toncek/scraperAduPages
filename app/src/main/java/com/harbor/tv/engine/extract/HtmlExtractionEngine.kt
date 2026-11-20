@@ -44,7 +44,7 @@ class HtmlExtractionEngine(
     fun parseDocument(
         html: String,
         finalUrl: String,
-        allowedCatalogHosts: Set<String> = emptySet()
+        @Suppress("UNUSED_PARAMETER") allowedCatalogHosts: Set<String> = emptySet()
     ): Document {
         val doc = Jsoup.parse(html, finalUrl)
         // Never allow page-provided <base> tags to hijack URL resolution or expand host permissions.

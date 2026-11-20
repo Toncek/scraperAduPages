@@ -60,6 +60,19 @@ enum class PlaybackStreamType {
     PROGRESSIVE
 }
 
+enum class CatalogSortMode {
+    DEFAULT,
+    QUALITY_FIRST,
+    LONGEST_FIRST
+}
+
+data class DeviceCodecCapabilities(
+    val hwAvc4k: Boolean = true,
+    val hwHevc4k: Boolean = true,
+    val hwAv14k: Boolean = false,
+    val summary: String = "HW 4K: H.264, HEVC"
+)
+
 data class TagProvenance(
     val canonicalTag: String,
     val sourceField: String,

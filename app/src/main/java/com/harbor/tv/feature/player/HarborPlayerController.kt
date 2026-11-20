@@ -89,6 +89,10 @@ data class PlayerUiState(
     val decodedHeight: Int = 0,
     val decodedFrameRate: Float = 0f,
     val videoCodec: String? = null,
+    val hasNextInQueue: Boolean = false,
+    val hasPreviousInQueue: Boolean = false,
+    val nextItemTitle: String? = null,
+    val upNextPreloadLabel: String? = null,
     val candidates: List<PlaybackCandidate> = emptyList(),
     val activeCandidate: PlaybackCandidate? = null,
     val audioTracks: List<PlayerTrackOption> = emptyList(),
@@ -210,6 +214,8 @@ class HarborPlayerController(
     private var currentAllowLan: Boolean = false
     private var onResolveExpiredCallback: (suspend (PlaybackResolutionResult, Int) -> PlaybackResolutionResult)? = null
     private var onSaveProgressCallback: ((Long) -> Unit)? = null
+    private var onQuarterProgressReachedCallback: (() -> Unit)? = null
+    private var quarterProgressFired: Boolean = false
     private var positionTickerJob: Job? = null
     private var lastSavedProgressMs: Long = -1L
 
@@ -269,21 +275,29 @@ class HarborPlayerController(
         allowLan: Boolean,
         initialPositionMs: Long = 0L,
         onResolveExpired: suspend (PlaybackResolutionResult, Int) -> PlaybackResolutionResult,
-        onSaveProgress: (Long) -> Unit
+        onSaveProgress: (Long) -> Unit,
+        onQuarterProgressReached: (() -> Unit)? = null
     ) {
         cancelPreload()
         currentResolution = resolution
         currentAllowLan = allowLan
         onResolveExpiredCallback = onResolveExpired
         onSaveProgressCallback = onSaveProgress
+        onQuarterProgressReachedCallback = onQuarterProgressReached
+        quarterProgressFired = false
         lastSavedProgressMs = -1L
 
         val initialCandidate = resolution.selectedCandidate ?: resolution.candidates.firstOrNull()
+        val prevQueueState = _uiState.value
         _uiState.value = PlayerUiState(
             title = title,
             sourceId = resolution.sourceId,
             sourceItemId = resolution.sourceItemId,
             isPrivateSession = isPrivateSession,
+            hasNextInQueue = prevQueueState.hasNextInQueue,
+            hasPreviousInQueue = prevQueueState.hasPreviousInQueue,
+            nextItemTitle = prevQueueState.nextItemTitle,
+            upNextPreloadLabel = prevQueueState.upNextPreloadLabel,
             candidates = resolution.candidates,
             activeCandidate = initialCandidate,
             expiryRetryAttempted = false,
@@ -360,6 +374,22 @@ class HarborPlayerController(
         player.trackSelectionParameters = builder.build()
     }
 
+    fun setQueueMetadata(
+        hasPrev: Boolean,
+        hasNext: Boolean,
+        nextTitle: String?,
+        upNextPreloadLabel: String? = null
+    ) {
+        _uiState.update {
+            it.copy(
+                hasPreviousInQueue = hasPrev,
+                hasNextInQueue = hasNext,
+                nextItemTitle = nextTitle,
+                upNextPreloadLabel = upNextPreloadLabel
+            )
+        }
+    }
+
     fun stop() {
         cancelPreload()
         persistProgressIfAllowed(force = true)
@@ -368,6 +398,8 @@ class HarborPlayerController(
         currentResolution = null
         onResolveExpiredCallback = null
         onSaveProgressCallback = null
+        onQuarterProgressReachedCallback = null
+        quarterProgressFired = false
     }
 
     fun release() {
@@ -681,6 +713,15 @@ class HarborPlayerController(
                             isSeekable = player.isCurrentMediaItemSeekable,
                             isLive = player.isCurrentMediaItemLive
                         )
+                    }
+                    if (!quarterProgressFired &&
+                        player.isPlaying &&
+                        !_uiState.value.isBuffering &&
+                        dur > 0L &&
+                        pos >= minOf(dur / 4L, 30_000L)
+                    ) {
+                        quarterProgressFired = true
+                        onQuarterProgressReachedCallback?.invoke()
                     }
                     persistProgressIfAllowed(force = false)
                 }

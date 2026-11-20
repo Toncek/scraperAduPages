@@ -568,6 +568,49 @@ class HarborAcceptanceTest {
         }
     }
 
+    @Test
+    fun codecCapabilities_deprioritizeSoftwareAv1AndInferNumericPaths() {
+        val noAv1Resolver = PlaybackResolver(
+            transport = OfflineFixtureHttpTransport(emptyMap(), RequestPolicyEngine()),
+            resolveMediaDns = false,
+            codecCapabilitiesProvider = {
+                com.harbor.tv.core.model.DeviceCodecCapabilities(
+                    hwAvc4k = true,
+                    hwHevc4k = true,
+                    hwAv14k = false,
+                    summary = "HW 4K: H.264, HEVC"
+                )
+            }
+        )
+        val hwAv1Resolver = PlaybackResolver(
+            transport = OfflineFixtureHttpTransport(emptyMap(), RequestPolicyEngine()),
+            resolveMediaDns = false,
+            codecCapabilitiesProvider = {
+                com.harbor.tv.core.model.DeviceCodecCapabilities(
+                    hwAvc4k = true,
+                    hwHevc4k = true,
+                    hwAv14k = true,
+                    summary = "HW 4K: H.264, HEVC, AV1"
+                )
+            }
+        )
+        val profile = UserProfile(id = "codec", name = "Codec", qualityPreference = QualityPreference.HIGHEST_AVAILABLE)
+        val candidates = listOf(
+            PlaybackCandidate("https://media.example.org/stream/2160.av1.mp4.m3u8", streamType = PlaybackStreamType.HLS, resolutionHeight = 2160),
+            PlaybackCandidate("https://media.example.org/stream/1080.mp4", streamType = PlaybackStreamType.PROGRESSIVE, resolutionHeight = 1080)
+        )
+
+        val pickedWithoutAv1 = noAv1Resolver.selectCandidate(candidates, profile)
+        assertEquals(1080, pickedWithoutAv1?.resolutionHeight)
+
+        val pickedWithAv1 = hwAv1Resolver.selectCandidate(candidates, profile)
+        assertEquals(2160, pickedWithAv1?.resolutionHeight)
+
+        // Verify numeric path height inference (/2160.mp4 and -1440-)
+        assertEquals(2160, noAv1Resolver.inferResolutionHeight(null, "https://cdn.example.org/pubs/abc/2160.mp4"))
+        assertEquals(1440, noAv1Resolver.inferResolutionHeight(null, "https://cdn.example.org/v/clip-2560-1440-8000-h264.mp4"))
+    }
+
     // -------------------------------------------------------------------------
     // Section 29: Magic-PH Reference Catalog Tests
     // -------------------------------------------------------------------------

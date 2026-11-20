@@ -4,9 +4,12 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import coil.Coil
+import coil.annotation.ExperimentalCoilApi
 import com.harbor.tv.core.model.CatalogItem
+import com.harbor.tv.core.model.CatalogSortMode
 import com.harbor.tv.core.model.CategoryItem
 import com.harbor.tv.core.model.DefinitionLifecycleState
+import com.harbor.tv.core.model.DeviceCodecCapabilities
 import com.harbor.tv.core.model.HarborErrorCode
 import com.harbor.tv.core.model.HarborException
 import com.harbor.tv.core.model.HostPurpose
@@ -42,6 +45,7 @@ import com.harbor.tv.engine.extract.UnifiedOperationExtractor
 import com.harbor.tv.engine.fixtures.FixtureRunner
 import com.harbor.tv.engine.policy.RequestPolicyEngine
 import com.harbor.tv.feature.player.HarborPlayerController
+import com.harbor.tv.feature.player.HardwareCodecCapabilities
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -131,6 +135,7 @@ data class HarborUiState(
     val mediaCacheUsedBytes: Long = 0L,
     val mediaCacheMaxBytes: Long = HarborSettingsStore.DEFAULT_MEDIA_CACHE_LIMIT_MB.toLong() * 1024L * 1024L,
     val availableStorageBytes: Long = 0L,
+    val hwCodecSummary: String = "",
 
     val registeredSources: List<SourceRegistry.RegisteredSource> = emptyList(),
     val bundledDefinitions: List<BundledDefinitionSummary> = emptyList(),
@@ -146,12 +151,14 @@ data class HarborUiState(
     val categoriesForSelectedSource: List<CategoryItem> = emptyList(),
     val selectedCategory: CategoryItem? = null,
     val categoryItems: List<CatalogItem> = emptyList(),
+    val categorySortMode: CatalogSortMode = CatalogSortMode.DEFAULT,
     val categoryNextCursor: String? = null,
     val categoryPagesLoaded: Int = 0,
 
     val searchQuery: String = "",
     val searchSourceFilterId: String? = null,
     val searchResults: List<CatalogItem> = emptyList(),
+    val searchSortMode: CatalogSortMode = CatalogSortMode.DEFAULT,
     val searchErrors: Map<String, String> = emptyMap(),
 
     val favorites: List<CatalogItem> = emptyList(),
@@ -191,9 +198,12 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         catalogCacheDao = db.catalogCacheDao()
     )
 
+    private val deviceCodecCapabilities: DeviceCodecCapabilities = HardwareCodecCapabilities.detect()
+
     private val _uiState = MutableStateFlow(
         HarborUiState(
-            bundledDefinitions = discoverBundledDefinitions()
+            bundledDefinitions = discoverBundledDefinitions(),
+            hwCodecSummary = deviceCodecCapabilities.summary
         )
     )
     val uiState: StateFlow<HarborUiState> = _uiState.asStateFlow()
@@ -227,7 +237,8 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         transport = hybridTransport,
         policyEngine = policyEngine,
         extractor = extractor,
-        filterEngine = filterEngine
+        filterEngine = filterEngine,
+        codecCapabilitiesProvider = { deviceCodecCapabilities }
     )
 
     val playerController = HarborPlayerController(appContext)
@@ -237,6 +248,14 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
     private var refreshHomeJob: Job? = null
     private val homeMergeMutex = Mutex()
     private var selectedVideoPlaybackResolvedAtMs: Long = 0L
+    private var rawCategoryItems: List<CatalogItem> = emptyList()
+    private var rawSearchResults: List<CatalogItem> = emptyList()
+    private var activePlaybackQueue: List<CatalogItem> = emptyList()
+    private var activePlaybackQueueIndex: Int = -1
+    private var upNextPreloadJob: Job? = null
+    private var preloadedNextCompositeId: String? = null
+    private var preloadedNextResolution: PlaybackResolutionResult? = null
+    private var preloadedNextResolvedAtMs: Long = 0L
 
     init {
         initializeAppState()
@@ -585,6 +604,9 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 )
             }
             if (enabled) {
+                upNextPreloadJob?.cancel()
+                preloadedNextCompositeId = null
+                preloadedNextResolution = null
                 playerController.cancelPreload()
                 controlledTransport.clearEphemeralState()
             } else {
@@ -754,8 +776,12 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    @OptIn(ExperimentalCoilApi::class)
     fun clearCacheAndHistory() {
         viewModelScope.launch {
+            upNextPreloadJob?.cancel()
+            preloadedNextCompositeId = null
+            preloadedNextResolution = null
             db.catalogCacheDao().clearAll()
             catalogRepository.clearWatchHistory(_uiState.value.activeProfile.id)
             val loader = Coil.imageLoader(appContext)
@@ -1138,10 +1164,45 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun sortCatalogItems(items: List<CatalogItem>, mode: CatalogSortMode): List<CatalogItem> {
+        return when (mode) {
+            CatalogSortMode.DEFAULT -> items
+            CatalogSortMode.QUALITY_FIRST -> items.sortedWith(
+                compareByDescending<CatalogItem> { it.maxResolutionHeight ?: 0 }
+                    .thenByDescending { it.durationSeconds ?: 0 }
+            )
+            CatalogSortMode.LONGEST_FIRST -> items.sortedWith(
+                compareByDescending<CatalogItem> { it.durationSeconds ?: 0 }
+                    .thenByDescending { it.maxResolutionHeight ?: 0 }
+            )
+        }
+    }
+
+    fun setCategorySortMode(mode: CatalogSortMode) {
+        _uiState.update { state ->
+            val base = if (rawCategoryItems.isNotEmpty()) rawCategoryItems else state.categoryItems
+            state.copy(
+                categorySortMode = mode,
+                categoryItems = sortCatalogItems(base, mode).take(60)
+            )
+        }
+    }
+
+    fun setSearchSortMode(mode: CatalogSortMode) {
+        _uiState.update { state ->
+            val base = if (rawSearchResults.isNotEmpty()) rawSearchResults else state.searchResults
+            state.copy(
+                searchSortMode = mode,
+                searchResults = sortCatalogItems(base, mode).take(60)
+            )
+        }
+    }
+
     fun selectCategory(category: CategoryItem) {
         viewModelScope.launch {
             val session = CatalogRepository.PaginationSession(category.sourceId)
             activePaginationSession = session
+            rawCategoryItems = emptyList()
             _uiState.update {
                 it.copy(
                     selectedCategory = category,
@@ -1161,9 +1222,11 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     preferences = state.preferences,
                     session = session
                 )
+                rawCategoryItems = page.items.take(60)
+                val sorted = sortCatalogItems(rawCategoryItems, state.categorySortMode)
                 _uiState.update {
                     it.copy(
-                        categoryItems = page.items.take(60),
+                        categoryItems = sorted,
                         categoryNextCursor = page.nextCursor,
                         categoryPagesLoaded = session.pagesLoaded,
                         isLoading = false
@@ -1204,12 +1267,15 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     preferences = state.preferences,
                     session = session
                 )
-                val merged = normalizer.deduplicateItems(_uiState.value.categoryItems + page.items)
+                val base = if (rawCategoryItems.isNotEmpty()) rawCategoryItems else _uiState.value.categoryItems
+                val merged = normalizer.deduplicateItems(base + page.items)
                 val enabledIds = sourceRegistry.getEnabledSourceIds()
                 val filtered = filterEngine.filterAndRank(merged, state.preferences, enabledIds).take(60)
+                rawCategoryItems = filtered
+                val sorted = sortCatalogItems(filtered, state.categorySortMode)
                 _uiState.update {
                     it.copy(
-                        categoryItems = filtered,
+                        categoryItems = sorted,
                         categoryNextCursor = page.nextCursor,
                         categoryPagesLoaded = session.pagesLoaded,
                         isLoading = false
@@ -1238,6 +1304,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         val q = (queryOverride ?: _uiState.value.searchQuery).trim()
         _uiState.update { it.copy(searchQuery = q) }
         if (q.isEmpty()) {
+            rawSearchResults = emptyList()
             _uiState.update { it.copy(searchResults = emptyList(), searchErrors = emptyMap()) }
             return
         }
@@ -1254,9 +1321,11 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
             val errStrings = result.sourceErrors.mapValues { (_, ex) ->
                 "${ex.code.name}: ${CredentialRedactor.redact(ex.message)}"
             }
+            rawSearchResults = result.items.take(60)
+            val sorted = sortCatalogItems(rawSearchResults, state.searchSortMode)
             _uiState.update {
                 it.copy(
-                    searchResults = result.items.take(60),
+                    searchResults = sorted,
                     searchErrors = errStrings,
                     isLoading = false
                 )
@@ -1412,7 +1481,11 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         openVideoDetails(current)
     }
 
-    fun playVideo(item: CatalogItem, candidateOverride: PlaybackCandidate? = null) {
+    fun playVideo(
+        item: CatalogItem,
+        candidateOverride: PlaybackCandidate? = null,
+        preserveQueue: Boolean = false
+    ) {
         viewModelScope.launch {
             val state = _uiState.value
             val enabledIds = sourceRegistry.getEnabledSourceIds()
@@ -1439,7 +1512,17 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 return@launch
             }
 
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            upNextPreloadJob?.cancel()
+            if (!preserveQueue) {
+                val (queue, idx) = buildQueueForItem(item, state)
+                activePlaybackQueue = queue
+                activePlaybackQueueIndex = idx
+            } else {
+                val idx = activePlaybackQueue.indexOfFirst { it.compositeId == item.compositeId }
+                if (idx >= 0) activePlaybackQueueIndex = idx
+            }
+
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, selectedVideo = item) }
             try {
                 val now = System.currentTimeMillis()
                 val cachedPreview = state.selectedVideoPlayback
@@ -1449,10 +1532,17 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     cachedPreview.candidates.isNotEmpty() &&
                     (now - selectedVideoPlaybackResolvedAtMs) in 0L until (5L * 60L * 1000L)
 
-                val resolved = if (canReusePreview) {
-                    cachedPreview!!
-                } else {
-                    playbackResolver.resolvePlayback(
+                val cachedNext = preloadedNextResolution
+                val canReusePreloadedNext = cachedNext != null &&
+                    cachedNext.sourceId == item.sourceId &&
+                    cachedNext.sourceItemId == item.sourceItemId &&
+                    cachedNext.candidates.isNotEmpty() &&
+                    (now - preloadedNextResolvedAtMs) in 0L until (5L * 60L * 1000L)
+
+                val resolved = when {
+                    canReusePreview -> cachedPreview!!
+                    canReusePreloadedNext -> cachedNext!!
+                    else -> playbackResolver.resolvePlayback(
                         item = item,
                         definition = def,
                         profile = state.activeProfile,
@@ -1480,7 +1570,11 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                         isLoading = false
                     )
                 }
-                navigateTo(HarborScreen.PLAYER)
+                if (state.currentScreen != HarborScreen.PLAYER) {
+                    navigateTo(HarborScreen.PLAYER)
+                }
+
+                updatePlayerQueueMetadata(preloadLabel = null)
 
                 playerController.startPlayback(
                     title = item.title,
@@ -1511,6 +1605,9 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                                 resumePositionMs = posMs
                             )
                         }
+                    },
+                    onQuarterProgressReached = {
+                        preloadNextInQueue()
                     }
                 )
             } catch (e: HarborException) {
@@ -1528,6 +1625,113 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     )
                 }
             }
+        }
+    }
+
+    fun playNextInQueue() {
+        val nextIndex = activePlaybackQueueIndex + 1
+        if (nextIndex !in activePlaybackQueue.indices) return
+        activePlaybackQueueIndex = nextIndex
+        val nextItem = activePlaybackQueue[nextIndex]
+        playVideo(nextItem, preserveQueue = true)
+    }
+
+    fun playPreviousInQueue() {
+        val prevIndex = activePlaybackQueueIndex - 1
+        if (prevIndex !in activePlaybackQueue.indices) return
+        activePlaybackQueueIndex = prevIndex
+        val prevItem = activePlaybackQueue[prevIndex]
+        playVideo(prevItem, preserveQueue = true)
+    }
+
+    private fun buildQueueForItem(
+        item: CatalogItem,
+        state: HarborUiState
+    ): Pair<List<CatalogItem>, Int> {
+        val candidates = listOf(
+            state.categoryItems,
+            state.searchResults,
+            state.favorites,
+            state.homeRowsBySource[item.sourceId].orEmpty()
+        )
+        for (list in candidates) {
+            val idx = list.indexOfFirst { it.compositeId == item.compositeId }
+            if (idx >= 0) {
+                return list to idx
+            }
+        }
+        return listOf(item) to 0
+    }
+
+    private fun updatePlayerQueueMetadata(preloadLabel: String?) {
+        val hasPrev = activePlaybackQueueIndex > 0
+        val nextIndex = activePlaybackQueueIndex + 1
+        val hasNext = nextIndex in activePlaybackQueue.indices
+        val nextTitle = if (hasNext) activePlaybackQueue[nextIndex].title else null
+        playerController.setQueueMetadata(
+            hasPrev = hasPrev,
+            hasNext = hasNext,
+            nextTitle = nextTitle,
+            upNextPreloadLabel = preloadLabel
+        )
+    }
+
+    private fun preloadNextInQueue() {
+        val state = _uiState.value
+        if (state.isPrivateSession || state.offlineFixtureMode || !state.videoPreloadEnabled) return
+        val nextIndex = activePlaybackQueueIndex + 1
+        if (nextIndex !in activePlaybackQueue.indices) return
+        val nextItem = activePlaybackQueue[nextIndex]
+        if (preloadedNextCompositeId == nextItem.compositeId) {
+            updatePlayerQueueMetadata(preloadLabel = "ROM Ready")
+            return
+        }
+
+        upNextPreloadJob?.cancel()
+        upNextPreloadJob = viewModelScope.launch(Dispatchers.IO) {
+            val def = sourceRegistry.getEnabledDefinition(nextItem.sourceId) ?: return@launch
+            if (!def.source.capabilities.playback || def.operations.playback == null) return@launch
+            val enabledIds = sourceRegistry.getEnabledSourceIds()
+            if (!filterEngine.isItemEligible(nextItem, state.preferences, enabledIds)) return@launch
+
+            withContext(Dispatchers.Main) {
+                updatePlayerQueueMetadata(preloadLabel = "Preloading to ROM...")
+            }
+
+            val resolved = runCatching {
+                playbackResolver.resolvePlayback(
+                    item = nextItem,
+                    definition = def,
+                    profile = state.activeProfile,
+                    preferences = state.preferences,
+                    enabledSourceIds = enabledIds
+                )
+            }.getOrNull() ?: return@launch
+
+            val candidate = resolved.selectedCandidate ?: resolved.candidates.firstOrNull() ?: return@launch
+            preloadedNextCompositeId = nextItem.compositeId
+            preloadedNextResolution = resolved
+            preloadedNextResolvedAtMs = System.currentTimeMillis()
+
+            playerController.preloadCandidate(
+                sourceId = nextItem.sourceId,
+                sourceItemId = nextItem.sourceItemId,
+                candidate = candidate,
+                refererUrl = resolved.sourcePageUrl,
+                allowLan = state.activeProfile.allowLanSources && def.network.allowLan,
+                maxBytes = 24L * 1024L * 1024L,
+                onFinished = {
+                    refreshMediaCacheStats()
+                    viewModelScope.launch(Dispatchers.Main) {
+                        val currentNextIdx = activePlaybackQueueIndex + 1
+                        if (currentNextIdx in activePlaybackQueue.indices &&
+                            activePlaybackQueue[currentNextIdx].compositeId == nextItem.compositeId
+                        ) {
+                            updatePlayerQueueMetadata(preloadLabel = "ROM Ready (24 MB)")
+                        }
+                    }
+                }
+            )
         }
     }
 
@@ -1569,7 +1773,6 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     }
                     return@launch
                 }
-                val sourceId = outcome.record.sourceId
                 val review = buildApprovalReview(outcome)
                 _uiState.update {
                     it.copy(

@@ -43,6 +43,7 @@ import coil.request.ImageRequest
 import coil.size.Precision
 import coil.size.Size
 import com.harbor.tv.core.model.CatalogItem
+import com.harbor.tv.core.model.CatalogSortMode
 import com.harbor.tv.core.model.CategoryItem
 import com.harbor.tv.core.model.LiveStatus
 import com.harbor.tv.core.model.UserProfile
@@ -501,6 +502,7 @@ fun CategoriesScreen(
     selectedCategory: CategoryItem?,
     items: List<CatalogItem>,
     only4kFilter: Boolean = false,
+    sortMode: CatalogSortMode = CatalogSortMode.DEFAULT,
     nextCursor: String?,
     pagesLoaded: Int,
     isLoading: Boolean,
@@ -508,6 +510,7 @@ fun CategoriesScreen(
     lastFocusedKey: String?,
     onFocusKeyChanged: (String) -> Unit,
     onToggleOnly4kFilter: () -> Unit = {},
+    onSelectSortMode: (CatalogSortMode) -> Unit = {},
     onSelectSource: (String) -> Unit,
     onSelectCategory: (CategoryItem) -> Unit,
     onLoadNextPage: () -> Unit,
@@ -566,13 +569,34 @@ fun CategoriesScreen(
             return
         }
 
-        // Source selector row + 4K toggle
+        // Source selector row + 4K toggle + Sort chips
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 TvTagChip(
                     label = if (only4kFilter) "4K Only: ON" else "4K Only",
                     selected = only4kFilter,
                     onClick = onToggleOnly4kFilter
+                )
+            }
+            item {
+                TvTagChip(
+                    label = "Sort: Default",
+                    selected = sortMode == CatalogSortMode.DEFAULT,
+                    onClick = { onSelectSortMode(CatalogSortMode.DEFAULT) }
+                )
+            }
+            item {
+                TvTagChip(
+                    label = "Sort: 4K First",
+                    selected = sortMode == CatalogSortMode.QUALITY_FIRST,
+                    onClick = { onSelectSortMode(CatalogSortMode.QUALITY_FIRST) }
+                )
+            }
+            item {
+                TvTagChip(
+                    label = "Sort: Longest",
+                    selected = sortMode == CatalogSortMode.LONGEST_FIRST,
+                    onClick = { onSelectSortMode(CatalogSortMode.LONGEST_FIRST) }
                 )
             }
             items(enabledSourceIds) { sourceId ->

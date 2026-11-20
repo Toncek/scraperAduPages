@@ -1,5 +1,6 @@
 package com.harbor.tv
 
+import android.content.ComponentCallbacks2
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -99,7 +100,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= TRIM_MEMORY_RUNNING_LOW || level >= TRIM_MEMORY_UI_HIDDEN) {
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN ||
+            level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+        ) {
             Coil.imageLoader(applicationContext).memoryCache?.clear()
         }
     }
@@ -238,6 +241,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         selectedCategory = state.selectedCategory,
                         items = state.categoryItems,
                         only4kFilter = state.only4kFilter,
+                        sortMode = state.categorySortMode,
                         nextCursor = state.categoryNextCursor,
                         pagesLoaded = state.categoryPagesLoaded,
                         isLoading = state.isLoading,
@@ -245,6 +249,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.CATEGORIES],
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.CATEGORIES, key) },
                         onToggleOnly4kFilter = { viewModel.toggleOnly4kFilter() },
+                        onSelectSortMode = { mode -> viewModel.setCategorySortMode(mode) },
                         onSelectSource = { sourceId -> viewModel.selectCategorySource(sourceId) },
                         onSelectCategory = { cat -> viewModel.selectCategory(cat) },
                         onLoadNextPage = { viewModel.loadNextCategoryPage() },
@@ -260,11 +265,13 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         selectedSourceFilterId = state.searchSourceFilterId,
                         results = state.searchResults,
                         only4kFilter = state.only4kFilter,
+                        sortMode = state.searchSortMode,
                         sourceErrors = state.searchErrors,
                         isLoading = state.isLoading,
                         lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.SEARCH],
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.SEARCH, key) },
                         onToggleOnly4kFilter = { viewModel.toggleOnly4kFilter() },
+                        onSelectSortMode = { mode -> viewModel.setSearchSortMode(mode) },
                         onQueryChange = { q -> viewModel.updateSearchQuery(q) },
                         onSelectSourceFilter = { id -> viewModel.setSearchSourceFilter(id) },
                         onSearch = { q -> viewModel.executeSearch(q) },
@@ -297,7 +304,9 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                 HarborScreen.PLAYER -> {
                     PlayerScreen(
                         controller = viewModel.playerController,
-                        onExitPlayback = { viewModel.navigateBack() }
+                        onExitPlayback = { viewModel.navigateBack() },
+                        onPlayPrevious = { viewModel.playPreviousInQueue() },
+                        onPlayNext = { viewModel.playNextInQueue() }
                     )
                 }
 
@@ -373,6 +382,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         mediaCacheUsedBytes = state.mediaCacheUsedBytes,
                         mediaCacheMaxBytes = state.mediaCacheMaxBytes,
                         availableStorageBytes = state.availableStorageBytes,
+                        hwCodecSummary = state.hwCodecSummary,
                         statusMessage = state.statusMessage,
                         onTogglePrivateSession = { enabled -> viewModel.togglePrivateSession(enabled) },
                         onSetUnknownMetadataMode = { mode -> viewModel.setUnknownMetadataMode(mode) },

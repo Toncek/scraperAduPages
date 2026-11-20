@@ -650,6 +650,10 @@ class UnifiedOperationExtractor(
         Regex("""\d{3,4}x(\d{3,4})""", RegexOption.IGNORE_CASE).find(text)?.let { match ->
             match.groupValues[1].toIntOrNull()?.let { return it }
         }
+        Regex("""(?:^|[/\-_])(2160|1440|1080|720|480|360|240)(?:\.(?:mp4|m3u8|mpd)|[/\-_]|$)""", RegexOption.IGNORE_CASE)
+            .find(text)?.let { match ->
+                match.groupValues[1].toIntOrNull()?.let { return it }
+            }
         val lower = text.lowercase(Locale.ROOT)
         if (Regex("""(?:^|[^a-z0-9])(4k|uhd)(?:[^a-z0-9]|$)""").containsMatchIn(lower)) return 2160
         if (Regex("""(?:^|[^a-z0-9])(2k|qhd)(?:[^a-z0-9]|$)""").containsMatchIn(lower)) return 1440

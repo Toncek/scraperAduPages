@@ -46,6 +46,7 @@ fun SettingsScreen(
     mediaCacheUsedBytes: Long = 0L,
     mediaCacheMaxBytes: Long = 1536L * 1024L * 1024L,
     availableStorageBytes: Long = 0L,
+    hwCodecSummary: String = "",
     statusMessage: String?,
     onTogglePrivateSession: (Boolean) -> Unit,
     onSetUnknownMetadataMode: (UnknownMetadataMode) -> Unit,
@@ -268,6 +269,13 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = HarborColors.AccentTeal
                     )
+                    if (hwCodecSummary.isNotBlank()) {
+                        Text(
+                            text = hwCodecSummary,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = HarborColors.FocusCyan
+                        )
+                    }
                     SettingsToggleRow(
                         title = "Background Video Preloading to ROM",
                         subtitle = "Preloads opening segments (24 MB) on Video Details into persistent ROM storage when Private Session is OFF.",

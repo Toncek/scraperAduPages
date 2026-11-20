@@ -1,6 +1,7 @@
 package com.harbor.tv.domain.playback
 
 import com.harbor.tv.core.model.CatalogItem
+import com.harbor.tv.core.model.DeviceCodecCapabilities
 import com.harbor.tv.core.model.HarborErrorCode
 import com.harbor.tv.core.model.HarborException
 import com.harbor.tv.core.model.HostPurpose
@@ -32,7 +33,8 @@ class PlaybackResolver(
     private val policyEngine: RequestPolicyEngine = RequestPolicyEngine(),
     private val extractor: UnifiedOperationExtractor = UnifiedOperationExtractor(policyEngine = policyEngine),
     private val filterEngine: PreferenceFilterEngine = PreferenceFilterEngine(),
-    private val resolveMediaDns: Boolean = false
+    private val resolveMediaDns: Boolean = false,
+    private val codecCapabilitiesProvider: () -> DeviceCodecCapabilities = { DeviceCodecCapabilities() }
 ) {
 
     companion object {
@@ -270,8 +272,16 @@ class PlaybackResolver(
         profile: UserProfile
     ): PlaybackCandidate? {
         if (candidates.isEmpty()) return null
+        val caps = codecCapabilitiesProvider()
+        val effectiveCandidates = if (!caps.hwAv14k) {
+            val nonAv1 = candidates.filterNot { isAv1Candidate(it) }
+            if (nonAv1.any { (it.resolutionHeight ?: 0) >= 720 }) nonAv1 else candidates
+        } else {
+            candidates
+        }
+
         return when (profile.qualityPreference) {
-            QualityPreference.HIGHEST_AVAILABLE -> candidates.maxWithOrNull(
+            QualityPreference.HIGHEST_AVAILABLE -> effectiveCandidates.maxWithOrNull(
                 compareBy<PlaybackCandidate>(
                     { it.resolutionHeight ?: 0 },
                     { it.bitrateKbps ?: 0 },
@@ -281,7 +291,7 @@ class PlaybackResolver(
 
             QualityPreference.PREFERRED_RESOLUTION -> {
                 val target = profile.preferredResolutionHeight
-                val atOrBelow = candidates.filter { (it.resolutionHeight ?: Int.MAX_VALUE) <= target }
+                val atOrBelow = effectiveCandidates.filter { (it.resolutionHeight ?: Int.MAX_VALUE) <= target }
                 if (atOrBelow.isNotEmpty()) {
                     atOrBelow.minWithOrNull(
                         compareBy<PlaybackCandidate>(
@@ -290,7 +300,7 @@ class PlaybackResolver(
                         )
                     )
                 } else {
-                    candidates.minByOrNull {
+                    effectiveCandidates.minByOrNull {
                         kotlin.math.abs((it.resolutionHeight ?: Int.MAX_VALUE) - target)
                     }
                 }
@@ -298,7 +308,7 @@ class PlaybackResolver(
 
             QualityPreference.PREFERRED_BITRATE -> {
                 val target = profile.preferredBitrateKbps
-                candidates.minWithOrNull(
+                effectiveCandidates.minWithOrNull(
                     compareBy<PlaybackCandidate>(
                         { kotlin.math.abs((it.bitrateKbps ?: target) - target) },
                         { -(it.resolutionHeight ?: 0) }
@@ -308,7 +318,7 @@ class PlaybackResolver(
 
             QualityPreference.MANUAL -> candidates.firstOrNull()
 
-            QualityPreference.AUTO_FALLBACK -> candidates.maxWithOrNull(
+            QualityPreference.AUTO_FALLBACK -> effectiveCandidates.maxWithOrNull(
                 compareBy<PlaybackCandidate>(
                     { streamTypePriority(it.streamType) },
                     { it.resolutionHeight ?: 0 },
@@ -316,6 +326,17 @@ class PlaybackResolver(
                 )
             )
         }
+    }
+
+    private fun isAv1Candidate(candidate: PlaybackCandidate): Boolean {
+        val urlLower = candidate.url.lowercase(Locale.ROOT)
+        val labelLower = candidate.qualityLabel?.lowercase(Locale.ROOT).orEmpty()
+        return urlLower.contains(".av1.") ||
+            urlLower.contains("av01") ||
+            urlLower.contains("_av1") ||
+            labelLower.contains(".av1.") ||
+            labelLower.contains("av01") ||
+            labelLower.contains("_av1")
     }
 
     fun inferResolutionHeight(qualityLabel: String?, url: String): Int? {
@@ -326,13 +347,20 @@ class PlaybackResolver(
         if (raw.isNullOrBlank()) return null
         val lower = raw.lowercase(Locale.ROOT)
         return when {
-            Regex("""(?:^|[^a-z0-9])(2160p|4k|3840x2160)(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 2160
-            Regex("""(?:^|[^a-z0-9])(1440p|2k)(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 1440
-            Regex("""(?:^|[^a-z0-9])(1080p|fhd)(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 1080
-            Regex("""(?:^|[^a-z0-9])720p(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 720
-            Regex("""(?:^|[^a-z0-9])480p(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 480
-            Regex("""(?:^|[^a-z0-9])360p(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 360
-            Regex("""(?:^|[^a-z0-9])240p(?:$|[^a-z0-9])""").containsMatchIn(lower) -> 240
+            Regex("""(?:^|[^a-z0-9])(2160p|4k|3840x2160)(?:$|[^a-z0-9])""").containsMatchIn(lower) ||
+                Regex("""(?:/|-)2160(?:\.mp4|-|/|$)""").containsMatchIn(lower) -> 2160
+            Regex("""(?:^|[^a-z0-9])(1440p|2k)(?:$|[^a-z0-9])""").containsMatchIn(lower) ||
+                Regex("""(?:/|-)1440(?:\.mp4|-|/|$)""").containsMatchIn(lower) -> 1440
+            Regex("""(?:^|[^a-z0-9])(1080p|fhd)(?:$|[^a-z0-9])""").containsMatchIn(lower) ||
+                Regex("""(?:/|-)1080(?:\.mp4|-|/|$)""").containsMatchIn(lower) -> 1080
+            Regex("""(?:^|[^a-z0-9])720p(?:$|[^a-z0-9])""").containsMatchIn(lower) ||
+                Regex("""(?:/|-)720(?:\.mp4|-|/|$)""").containsMatchIn(lower) -> 720
+            Regex("""(?:^|[^a-z0-9])480p(?:$|[^a-z0-9])""").containsMatchIn(lower) ||
+                Regex("""(?:/|-)480(?:\.mp4|-|/|$)""").containsMatchIn(lower) -> 480
+            Regex("""(?:^|[^a-z0-9])360p(?:$|[^a-z0-9])""").containsMatchIn(lower) ||
+                Regex("""(?:/|-)360(?:\.mp4|-|/|$)""").containsMatchIn(lower) -> 360
+            Regex("""(?:^|[^a-z0-9])240p(?:$|[^a-z0-9])""").containsMatchIn(lower) ||
+                Regex("""(?:/|-)240(?:\.mp4|-|/|$)""").containsMatchIn(lower) -> 240
             else -> null
         }
     }

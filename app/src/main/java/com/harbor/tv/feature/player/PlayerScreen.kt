@@ -70,6 +70,8 @@ private enum class PlayerPanel {
 fun PlayerScreen(
     controller: HarborPlayerController,
     onExitPlayback: () -> Unit,
+    onPlayPrevious: () -> Unit = {},
+    onPlayNext: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by controller.uiState.collectAsState()
@@ -363,6 +365,17 @@ fun PlayerScreen(
                         .padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
+                    val upNextTitle = uiState.nextItemTitle
+                    if (!upNextTitle.isNullOrBlank()) {
+                        val suffix = uiState.upNextPreloadLabel?.takeIf { it.isNotBlank() }
+                            ?.let { " • $it" } ?: ""
+                        Text(
+                            text = "Up Next: $upNextTitle$suffix",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = HarborColors.AccentTeal
+                        )
+                    }
+
                     // Focusable D-pad Timeline Scrubber (active only when stream is seekable)
                     val progressFraction = if (uiState.durationMs > 0L) {
                         (uiState.currentPositionMs.toFloat() / uiState.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -437,6 +450,16 @@ fun PlayerScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        if (uiState.hasPreviousInQueue) {
+                            TvActionButton(
+                                label = "Prev",
+                                onClick = {
+                                    onPlayPrevious()
+                                    bumpInteraction()
+                                }
+                            )
+                        }
+
                         if (uiState.isSeekable) {
                             TvActionButton(
                                 label = "-15s",
@@ -462,6 +485,17 @@ fun PlayerScreen(
                                 label = "+15s",
                                 onClick = {
                                     controller.seekBy(15_000L)
+                                    bumpInteraction()
+                                }
+                            )
+                        }
+
+                        if (uiState.hasNextInQueue) {
+                            TvActionButton(
+                                label = "Next",
+                                tone = TvButtonTone.ACCENT,
+                                onClick = {
+                                    onPlayNext()
                                     bumpInteraction()
                                 }
                             )

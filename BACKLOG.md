@@ -60,12 +60,12 @@
 
 ---
 
-## 3. Future Backlog (P2 / P3)
+## 3. Completed P2 / P3 Upgrades & Remaining Backlog
 
-- **[P2] Additional `Magic-PH` Declarative Sources**: Author & fixture-test `youporn-html.yaml`, `tube8-html.yaml`, `hqporner-html.yaml`, `youjizz-html.yaml`, and `thumbzilla-html.yaml` (all verified HTTP 200 without Cloudflare).
-- **[P2] Hardware Codec Capability Matching (`MediaCodecList`)**: Inspect Android TV hardware decoders at startup (AV1 vs HEVC vs H.264 at 4K60) and automatically deprioritize software-only 4K codecs (e.g., AV1 on older MediaTek SoCs) in `PlaybackResolver` when an H.264/HEVC 4K/1080p candidate is available.
-- **[P2] Up-Next Background ROM Queue**: While watching a video past 25%, gently preload the next video in the active category/row into the 1.5–2.0 GB persistent ROM cache (respecting Private Session = OFF).
-- **[P2] Category & Search Sorting**: Add declarative/client-side sort controls (`Highest Quality (4K First)`, `Longest Duration`, `Newest`) on Categories and Search screens.
-- **[P3] Release Build Optimization (R8 / ProGuard)**: Enable `isMinifyEnabled = true` + `isShrinkResources = true` for release APKs to further cut memory overhead and cold-start latency on 2 GB RAM TVs.
+- **[DONE] [P2] Hardware Codec Capability Matching (`MediaCodecList`)**: Added `HardwareCodecCapabilities.detect()` inspecting Android hardware 4K decoders (`video/avc`, `video/hevc`, `video/av01`), wired into `PlaybackResolver` to deprioritize software-only AV1 when a hardware H.264/HEVC `>= 720p` stream is available, and surfaced in `SettingsScreen`.
+- **[DONE] [P2] Up-Next Background ROM Queue**: Added playback queue tracking (`Prev` / `Next` D-pad controls + Up-Next HUD in `PlayerScreen`) and automatic 24 MB background ROM preloading of the next video once active playback passes 25% (or 30s) while healthy and not in Private Session.
+- **[DONE] [P2] Category & Search Sorting**: Added `CatalogSortMode` (`DEFAULT`, `QUALITY_FIRST` = 4K First, `LONGEST_FIRST` = Longest) chips across `CategoriesScreen` and `SearchScreen`.
+- **[DONE] [P3] Release Build Optimization (R8 / ProGuard)**: Enabled `isMinifyEnabled = true` + `isShrinkResources = true` in `app/build.gradle.kts` with full Room, DataStore, Coil, Media3, OkHttp, Jsoup, and kotlinx.serialization keep rules in `app/proguard-rules.pro`.
+- **[P2] Additional `Magic-PH` Declarative Sources**: Author & fixture-test additional HTTP-200 verified platforms (`youporn-html.yaml`, `tube8-html.yaml`, `thumbzilla-html.yaml`, etc.) where clean declarative streams exist.
 - **[P3] Thumbnail Hover/Focus Preview Strip**: Optional low-memory storyboard cycling on focused cards when multiple `thumbnailReferences` exist.
 - **[P3] Voice Search Integration**: Wire Android TV remote microphone (`RecognizerIntent`) into `SearchScreen`.

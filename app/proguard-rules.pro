@@ -36,3 +36,16 @@
 # Media3 ExoPlayer
 -keep class androidx.media3.** { *; }
 -dontwarn androidx.media3.**
+
+# Room database and generated DAOs / Impl classes
+-keep class com.harbor.tv.core.storage.** { *; }
+-keep class * extends androidx.room.RoomDatabase
+-dontwarn androidx.room.paging.**
+
+# Jetpack DataStore
+-keep class androidx.datastore.** { *; }
+-dontwarn androidx.datastore.**
+
+# Coil image loader
+-keep class coil.** { *; }
+-dontwarn coil.**
