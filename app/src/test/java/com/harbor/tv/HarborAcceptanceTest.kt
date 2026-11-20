@@ -18,6 +18,7 @@ import com.harbor.tv.core.network.HttpResponseData
 import com.harbor.tv.core.network.HttpTransport
 import com.harbor.tv.core.security.AddressSafetyValidator
 import com.harbor.tv.core.security.CredentialRedactor
+import com.harbor.tv.core.security.PinHasher
 import com.harbor.tv.core.storage.HarborBackupManager
 import com.harbor.tv.core.storage.HarborBackupPayload
 import com.harbor.tv.domain.catalog.CatalogNormalizer
@@ -771,6 +772,27 @@ class HarborAcceptanceTest {
         assertEquals(listOf("clean-1"), partition.eligible.map { it.sourceItemId })
         assertEquals(listOf("blocked-1"), partition.rejectedWithoutArtwork.map { it.sourceItemId })
         assertTrue(partition.rejectedWithoutArtwork.all { it.thumbnailReferences.isEmpty() })
+    }
+
+    @Test
+    fun appStartupPinLock_hashesVerifiesAndNeverExportsInBackup() {
+        val pinHash = PinHasher.hashPin("2580")
+        assertTrue(pinHash.isNotBlank())
+        assertFalse(pinHash == "2580")
+        assertTrue(PinHasher.verifyPin("2580", pinHash))
+        assertFalse(PinHasher.verifyPin("0000", pinHash))
+
+        val payload = HarborBackupPayload(
+            schemaVersion = 1,
+            exportedAtEpochMs = 1_750_000_000_000L,
+            preferences = PreferenceConfig(profileId = "default"),
+            tasteProfile = UserTasteProfile(profileId = "default"),
+            favorites = emptyList(),
+            watchLater = emptyList()
+        )
+        val encoded = HarborBackupManager.encodeBackupJson(payload)
+        assertFalse(encoded.contains("app_lock_pin_hash", ignoreCase = true))
+        assertFalse(encoded.contains(pinHash, ignoreCase = true))
     }
 
     @Test

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -108,12 +110,156 @@ fun HomeScreen(
     val restoreRequesters = remember { mutableMapOf<String, FocusRequester>() }
     fun requesterFor(key: String): FocusRequester =
         restoreRequesters.getOrPut(key) { FocusRequester() }
+    var selectedSiteFilterId by remember { mutableStateOf<String?>(null) }
+    val activeSiteFilterId = selectedSiteFilterId?.takeIf { it in enabledSourceIds }
+    val isFilteredMode = only4kFilter || activeSiteFilterId != null
 
-    LaunchedEffect(lastFocusedKey, rowsBySource) {
+    LaunchedEffect(lastFocusedKey, rowsBySource, isFilteredMode) {
         val target = lastFocusedKey ?: return@LaunchedEffect
         restoreRequesters[target]?.let { req ->
             runCatching { req.requestFocus() }
         }
+    }
+
+    val orderedKnown = remember {
+        listOf(
+            "eporner-api-v2",
+            "porntrex-html",
+            "xhamster-html",
+            "pornhub-webmaster",
+            "xvideos-html",
+            "xnxx-html",
+            "redtube-api"
+        )
+    }
+    val siteChips = remember(enabledSourceIds) {
+        (orderedKnown.filter { it in enabledSourceIds } +
+            enabledSourceIds.filter { it !in orderedKnown }).distinct()
+    }
+
+    if (isFilteredMode) {
+        val filteredGridItems = remember(
+            personalizedFreshItems,
+            rowsBySource,
+            only4kFilter,
+            activeSiteFilterId
+        ) {
+            (personalizedFreshItems + rowsBySource.values.flatten())
+                .distinctBy { it.compositeId }
+                .filter { item ->
+                    (activeSiteFilterId == null || item.sourceId == activeSiteFilterId) &&
+                        (!only4kFilter || is4kCatalogItem(item))
+                }
+        }
+        val filterSummary = buildString {
+            append(if (activeSiteFilterId != null) friendlySourceName(activeSiteFilterId) else "All Sites")
+            if (only4kFilter) append(" • 4K")
+            append(" (${filteredGridItems.size})")
+        }
+
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(HarborColors.Background)
+                .padding(horizontal = 24.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                item(key = "home_filter_summary") {
+                    Text(
+                        text = filterSummary,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = HarborColors.FocusCyan,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                }
+                item(key = "home_filter_4k") {
+                    TvTagChip(
+                        label = if (only4kFilter) "★ 4K Only: ON" else "★ 4K Only",
+                        selected = only4kFilter,
+                        onClick = onToggleOnly4kFilter
+                    )
+                }
+                item(key = "home_filter_all_sites") {
+                    TvTagChip(
+                        label = "All Sites",
+                        selected = activeSiteFilterId == null,
+                        onClick = { selectedSiteFilterId = null }
+                    )
+                }
+                items(siteChips, key = { "home_filter_site_$it" }) { srcId ->
+                    TvTagChip(
+                        label = friendlySourceName(srcId),
+                        selected = activeSiteFilterId == srcId,
+                        onClick = {
+                            selectedSiteFilterId = if (activeSiteFilterId == srcId) null else srcId
+                        }
+                    )
+                }
+                item(key = "home_filter_clear") {
+                    TvTagChip(
+                        label = "Clear",
+                        onClick = {
+                            selectedSiteFilterId = null
+                            if (only4kFilter) onToggleOnly4kFilter()
+                        }
+                    )
+                }
+                item(key = "home_filter_refresh") {
+                    TvTagChip(
+                        label = if (isLoading) "Refreshing..." else "Refresh",
+                        onClick = onRefresh
+                    )
+                }
+            }
+
+            if (filteredGridItems.isEmpty()) {
+                TvStatusBanner(
+                    title = if (isLoading) "Loading Videos..." else "No Matching Videos",
+                    body = if (isLoading) {
+                        "Fetching videos from enabled sites..."
+                    } else {
+                        "No loaded videos match the active filter. Try clearing 4K Only or picking another site."
+                    },
+                    accentColor = HarborColors.FocusCyan
+                )
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 196.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxSize()
+                ) {
+                    items(filteredGridItems, key = { "home_grid_${it.compositeId}" }) { item ->
+                        val key = "home_grid:${item.compositeId}"
+                        TvVideoCard(
+                            item = item,
+                            focusRequester = requesterFor(key),
+                            onFocused = {
+                                onFocusKeyChanged(key)
+                                onFeaturedItemFocused(item)
+                            },
+                            showSourceBadge = activeSiteFilterId == null,
+                            previewEnabled = previewEnabled,
+                            fillWidth = true,
+                            compact = true,
+                            onClick = { onOpenVideo(item) }
+                        )
+                    }
+                }
+            }
+        }
+        return
     }
 
     LazyColumn(
@@ -280,30 +426,19 @@ fun HomeScreen(
         // Quick Sites row
         if (enabledSourceIds.isNotEmpty()) {
             item(key = "quick_sites") {
-                val orderedKnown = listOf(
-                    "eporner-api-v2",
-                    "porntrex-html",
-                    "xhamster-html",
-                    "pornhub-webmaster",
-                    "xvideos-html",
-                    "xnxx-html",
-                    "redtube-api"
-                )
-                val siteChips = (orderedKnown.filter { it in enabledSourceIds } +
-                    enabledSourceIds.filter { it !in orderedKnown }).distinct()
-
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     item(key = "site_all") {
                         TvTagChip(
                             label = "All Sites",
-                            selected = true,
-                            onClick = { siteChips.firstOrNull()?.let(onOpenSourceCategories) }
+                            selected = activeSiteFilterId == null,
+                            onClick = { selectedSiteFilterId = null }
                         )
                     }
                     items(siteChips, key = { "site_$it" }) { srcId ->
                         TvTagChip(
                             label = friendlySourceName(srcId),
-                            onClick = { onOpenSourceCategories(srcId) }
+                            selected = activeSiteFilterId == srcId,
+                            onClick = { selectedSiteFilterId = srcId }
                         )
                     }
                 }
@@ -738,41 +873,35 @@ fun CategoriesScreen(
     val restoreRequesters = remember { mutableMapOf<String, FocusRequester>() }
     fun requesterFor(key: String): FocusRequester =
         restoreRequesters.getOrPut(key) { FocusRequester() }
+    var filtersExpanded by remember { mutableStateOf(false) }
+    val displayedItems = if (only4kFilter) items.filter(::is4kCatalogItem) else items
 
-    LaunchedEffect(lastFocusedKey, items) {
+    LaunchedEffect(selectedSourceId, selectedCategory?.id, displayedItems.isNotEmpty()) {
+        if (displayedItems.isNotEmpty()) {
+            filtersExpanded = false
+        }
+    }
+
+    LaunchedEffect(lastFocusedKey, items, filtersExpanded) {
         val target = lastFocusedKey ?: return@LaunchedEffect
         restoreRequesters[target]?.let { req ->
             runCatching { req.requestFocus() }
         }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(HarborColors.Background)
-            .padding(horizontal = 28.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    if (enabledSourceIds.isEmpty()) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(HarborColors.Background)
+                .padding(horizontal = 28.dp, vertical = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
                 text = "Browse Categories",
                 style = MaterialTheme.typography.headlineMedium,
                 color = HarborColors.TextPrimary
             )
-            if (selectedCategory != null) {
-                Text(
-                    text = "${friendlySourceName(selectedCategory.sourceId)} • ${selectedCategory.title}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = HarborColors.TextSecondary
-                )
-            }
-        }
-
-        if (enabledSourceIds.isEmpty()) {
             TvStatusBanner(
                 title = "No Enabled Sources",
                 body = "Enable a validated source definition in Sources to browse its categories.",
@@ -783,63 +912,171 @@ fun CategoriesScreen(
                 tone = TvButtonTone.PRIMARY,
                 onClick = onOpenSources
             )
-            return
         }
+        return
+    }
 
-        // Source selector row + 4K toggle + Sort chips
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            item {
-                TvTagChip(
-                    label = if (only4kFilter) "4K Only: ON" else "4K Only",
-                    selected = only4kFilter,
-                    onClick = onToggleOnly4kFilter
-                )
-            }
-            item {
-                TvTagChip(
-                    label = "Sort: Default",
-                    selected = sortMode == CatalogSortMode.DEFAULT,
-                    onClick = { onSelectSortMode(CatalogSortMode.DEFAULT) }
-                )
-            }
-            item {
-                TvTagChip(
-                    label = "Sort: 4K First",
-                    selected = sortMode == CatalogSortMode.QUALITY_FIRST,
-                    onClick = { onSelectSortMode(CatalogSortMode.QUALITY_FIRST) }
-                )
-            }
-            item {
-                TvTagChip(
-                    label = "Sort: Longest",
-                    selected = sortMode == CatalogSortMode.LONGEST_FIRST,
-                    onClick = { onSelectSortMode(CatalogSortMode.LONGEST_FIRST) }
-                )
-            }
-            items(enabledSourceIds) { sourceId ->
-                TvTagChip(
-                    label = friendlySourceName(sourceId),
-                    selected = sourceId == selectedSourceId,
-                    onClick = { onSelectSource(sourceId) }
-                )
-            }
-        }
+    val compactGridMode = !filtersExpanded && displayedItems.isNotEmpty()
+    val sortLabel = when (sortMode) {
+        CatalogSortMode.DEFAULT -> "Default"
+        CatalogSortMode.QUALITY_FIRST -> "4K First"
+        CatalogSortMode.LONGEST_FIRST -> "Longest"
+    }
+    val nextSortMode = when (sortMode) {
+        CatalogSortMode.DEFAULT -> CatalogSortMode.QUALITY_FIRST
+        CatalogSortMode.QUALITY_FIRST -> CatalogSortMode.LONGEST_FIRST
+        CatalogSortMode.LONGEST_FIRST -> CatalogSortMode.DEFAULT
+    }
 
-        // Category cards row
-        if (categories.isNotEmpty()) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(categories, key = { "${it.sourceId}::${it.id}" }) { cat ->
-                    val isSelected = selectedCategory?.id == cat.id && selectedCategory.sourceId == cat.sourceId
-                    TvFocusableCard(
-                        onClick = { onSelectCategory(cat) },
-                        unfocusedBorderColor = if (isSelected) HarborColors.FocusCyan else HarborColors.BorderSubtle,
-                        contentPadding = 12.dp
-                    ) {
-                        Text(
-                            text = cat.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = if (isSelected) HarborColors.FocusCyan else HarborColors.TextPrimary
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(HarborColors.Background)
+            .padding(
+                horizontal = if (compactGridMode) 24.dp else 28.dp,
+                vertical = if (compactGridMode) 14.dp else 22.dp
+            ),
+        verticalArrangement = Arrangement.spacedBy(if (compactGridMode) 10.dp else 14.dp)
+    ) {
+        if (compactGridMode) {
+            val activeSourceLabel = friendlySourceName(
+                selectedCategory?.sourceId ?: selectedSourceId ?: enabledSourceIds.first()
+            )
+            val activeCategoryLabel = selectedCategory?.title ?: "Videos"
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                item(key = "cat_slim_title") {
+                    Text(
+                        text = "$activeSourceLabel • $activeCategoryLabel (${displayedItems.size})",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = HarborColors.FocusCyan,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                }
+                item(key = "cat_slim_filters") {
+                    TvTagChip(
+                        label = "Filters ▾",
+                        onClick = { filtersExpanded = true }
+                    )
+                }
+                item(key = "cat_slim_4k") {
+                    TvTagChip(
+                        label = if (only4kFilter) "4K Only: ON" else "4K Only",
+                        selected = only4kFilter,
+                        onClick = onToggleOnly4kFilter
+                    )
+                }
+                item(key = "cat_slim_sort") {
+                    TvTagChip(
+                        label = "Sort: $sortLabel",
+                        selected = sortMode != CatalogSortMode.DEFAULT,
+                        onClick = { onSelectSortMode(nextSortMode) }
+                    )
+                }
+                if (nextCursor != null) {
+                    item(key = "cat_slim_next") {
+                        TvTagChip(
+                            label = if (isLoading) "Loading..." else "Next Page",
+                            onClick = { if (!isLoading) onLoadNextPage() }
                         )
+                    }
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Browse Categories",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = HarborColors.TextPrimary
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (selectedCategory != null) {
+                        Text(
+                            text = "${friendlySourceName(selectedCategory.sourceId)} • ${selectedCategory.title}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = HarborColors.TextSecondary
+                        )
+                    }
+                    if (displayedItems.isNotEmpty()) {
+                        TvTagChip(
+                            label = "Hide Filters ▴",
+                            onClick = { filtersExpanded = false }
+                        )
+                    }
+                }
+            }
+
+            // Source selector row + 4K toggle + Sort chips
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                item {
+                    TvTagChip(
+                        label = if (only4kFilter) "4K Only: ON" else "4K Only",
+                        selected = only4kFilter,
+                        onClick = onToggleOnly4kFilter
+                    )
+                }
+                item {
+                    TvTagChip(
+                        label = "Sort: Default",
+                        selected = sortMode == CatalogSortMode.DEFAULT,
+                        onClick = { onSelectSortMode(CatalogSortMode.DEFAULT) }
+                    )
+                }
+                item {
+                    TvTagChip(
+                        label = "Sort: 4K First",
+                        selected = sortMode == CatalogSortMode.QUALITY_FIRST,
+                        onClick = { onSelectSortMode(CatalogSortMode.QUALITY_FIRST) }
+                    )
+                }
+                item {
+                    TvTagChip(
+                        label = "Sort: Longest",
+                        selected = sortMode == CatalogSortMode.LONGEST_FIRST,
+                        onClick = { onSelectSortMode(CatalogSortMode.LONGEST_FIRST) }
+                    )
+                }
+                items(enabledSourceIds) { sourceId ->
+                    TvTagChip(
+                        label = friendlySourceName(sourceId),
+                        selected = sourceId == selectedSourceId,
+                        onClick = { onSelectSource(sourceId) }
+                    )
+                }
+            }
+
+            // Category cards row
+            if (categories.isNotEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(categories, key = { "${it.sourceId}::${it.id}" }) { cat ->
+                        val isSelected = selectedCategory?.id == cat.id && selectedCategory.sourceId == cat.sourceId
+                        TvFocusableCard(
+                            onClick = {
+                                filtersExpanded = false
+                                onSelectCategory(cat)
+                            },
+                            unfocusedBorderColor = if (isSelected) HarborColors.FocusCyan else HarborColors.BorderSubtle,
+                            contentPadding = 12.dp
+                        ) {
+                            Text(
+                                text = cat.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = if (isSelected) HarborColors.FocusCyan else HarborColors.TextPrimary
+                            )
+                        }
                     }
                 }
             }
@@ -853,7 +1090,7 @@ fun CategoriesScreen(
             )
         }
 
-        if (isLoading) {
+        if (isLoading && !compactGridMode) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -867,14 +1104,14 @@ fun CategoriesScreen(
             }
         }
 
-        val displayedItems = if (only4kFilter) items.filter(::is4kCatalogItem) else items
-
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 264.dp),
-            contentPadding = PaddingValues(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.weight(1f)
+            columns = GridCells.Adaptive(minSize = 196.dp),
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxSize()
         ) {
             items(displayedItems, key = { it.compositeId }) { item ->
                 val key = "cat_item:${item.compositeId}"
@@ -884,12 +1121,14 @@ fun CategoriesScreen(
                     onFocused = { onFocusKeyChanged(key) },
                     showSourceBadge = false,
                     previewEnabled = previewEnabled,
+                    fillWidth = true,
+                    compact = true,
                     onClick = { onOpenVideo(item) }
                 )
             }
         }
 
-        if (nextCursor != null) {
+        if (!compactGridMode && nextCursor != null) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

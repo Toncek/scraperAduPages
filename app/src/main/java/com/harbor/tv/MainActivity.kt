@@ -32,6 +32,7 @@ import com.harbor.tv.feature.catalog.CategoriesScreen
 import com.harbor.tv.feature.catalog.FavoritesScreen
 import com.harbor.tv.feature.catalog.HomeScreen
 import com.harbor.tv.feature.details.VideoDetailsScreen
+import com.harbor.tv.feature.onboarding.AppStartupPinLockScreen
 import com.harbor.tv.feature.onboarding.PreferenceSetupScreen
 import com.harbor.tv.feature.onboarding.ProfileSelectionScreen
 import com.harbor.tv.feature.onboarding.WelcomeScreen
@@ -111,6 +112,25 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun HarborTvApp(viewModel: HarborViewModel) {
     val state by viewModel.uiState.collectAsState()
+    if (!state.isAppLockChecked) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(HarborColors.Background)
+        )
+        return
+    }
+    if (state.isAppLocked) {
+        BackHandler(enabled = true) {
+            // Keep startup lock screen active until valid PIN is entered
+        }
+        AppStartupPinLockScreen(
+            errorMessage = state.appLockError,
+            onSubmitPin = { enteredPin -> viewModel.unlockAppWithPin(enteredPin) }
+        )
+        return
+    }
+
     val preloadStatus by viewModel.playerController.preloadStatus.collectAsState()
 
     val enabledSourceIds = state.registeredSources
@@ -427,6 +447,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         minDurationSeconds = state.preferences.minDurationSeconds,
                         avoidRepeatsEnabled = state.preferences.avoidRepeatsEnabled,
                         hiddenVideosCount = state.preferences.hiddenItemIds.size,
+                        hasAppLockPin = state.hasAppLockPin,
                         tasteProfile = state.tasteProfile,
                         topLabelCombos = state.topLabelCombos,
                         mediaCacheLimitMb = state.mediaCacheLimitMb,
@@ -457,6 +478,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         onToggleAutoPlayNext = { enabled -> viewModel.setAutoPlayNextEnabled(enabled) },
                         onToggleFocusPreview = { enabled -> viewModel.setFocusPreviewEnabled(enabled) },
                         onSetMediaCacheLimitMb = { mb -> viewModel.setMediaCacheLimitMb(mb) },
+                        onSetAppLockPin = { pin -> viewModel.setAppLockPin(pin) },
                         onSetProfilePin = { pin -> viewModel.setProfilePin(pin) },
                         onClearCacheAndHistory = { viewModel.clearCacheAndHistory() },
                         onOpenPreferenceSetup = { viewModel.navigateTo(HarborScreen.PREFERENCE_SETUP) },

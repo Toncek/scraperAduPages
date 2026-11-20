@@ -582,7 +582,9 @@ fun TvVideoCard(
     onFocused: (() -> Unit)? = null,
     showSourceBadge: Boolean = true,
     progressFraction: Float? = null,
-    previewEnabled: Boolean = true
+    previewEnabled: Boolean = true,
+    fillWidth: Boolean = false,
+    compact: Boolean = false
 ) {
     val thumbs = remember(item.thumbnailReferences) {
         item.thumbnailReferences.filter { it.isNotBlank() }
@@ -596,7 +598,7 @@ fun TvVideoCard(
 
     TvFocusableCard(
         onClick = onClick,
-        modifier = modifier.width(276.dp),
+        modifier = if (fillWidth) modifier.fillMaxWidth() else modifier.width(276.dp),
         focusRequester = focusRequester,
         onFocused = onFocused,
         shape = RoundedCornerShape(14.dp),
@@ -797,14 +799,18 @@ fun TvVideoCard(
             }
 
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = if (compact) {
+                    Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                } else {
+                    Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                },
+                verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp)
             ) {
                 Text(
                     text = item.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium,
                     color = if (isFocused) HarborColors.FocusRing else HarborColors.TextPrimary,
-                    maxLines = 2,
+                    maxLines = if (compact) 1 else 2,
                     overflow = TextOverflow.Ellipsis
                 )
 
@@ -812,12 +818,12 @@ fun TvVideoCard(
                     .map(::formatTagForDisplay)
                     .filter { it.isNotBlank() }
                     .distinct()
-                    .take(3)
+                    .take(if (compact) 2 else 3)
                     .joinToString(" • ")
                 val secondaryText = tagsPreview.ifEmpty { friendlySourceName(item.sourceId) }
                 Text(
                     text = secondaryText,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
                     color = HarborColors.TextSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

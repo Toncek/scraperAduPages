@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.harbor.tv.core.model.CatalogItem
@@ -77,9 +79,28 @@ fun SearchScreen(
 ) {
     var showRemoteKeys by remember { mutableStateOf(false) }
     var voiceNotice by remember { mutableStateOf<String?>(null) }
+    var filtersExpanded by remember { mutableStateOf(false) }
     val restoreRequesters = remember { mutableMapOf<String, FocusRequester>() }
     fun requesterFor(key: String): FocusRequester =
         restoreRequesters.getOrPut(key) { FocusRequester() }
+
+    val displayedResults = remember(results, only4kFilter) {
+        if (only4kFilter) {
+            results.filter { item ->
+                (item.maxResolutionHeight ?: 0) >= 2160 ||
+                    item.maxQualityLabel?.contains("4K", ignoreCase = true) == true ||
+                    item.title.contains("4k", ignoreCase = true)
+            }
+        } else {
+            results
+        }
+    }
+
+    LaunchedEffect(results, query, selectedSourceFilterId, only4kFilter) {
+        if (displayedResults.isNotEmpty()) {
+            filtersExpanded = false
+        }
+    }
 
     val voiceSearchLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -97,7 +118,7 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(lastFocusedKey, results) {
+    LaunchedEffect(lastFocusedKey, results, filtersExpanded) {
         val target = lastFocusedKey ?: return@LaunchedEffect
         restoreRequesters[target]?.let { req ->
             runCatching { req.requestFocus() }
@@ -108,216 +129,320 @@ fun SearchScreen(
         listOf("4K", "2160p", "1080p", "60fps", "HD")
     }
 
+    val compactGridMode = !filtersExpanded && displayedResults.isNotEmpty()
+    val sortLabel = when (sortMode) {
+        CatalogSortMode.DEFAULT -> "Default"
+        CatalogSortMode.QUALITY_FIRST -> "4K First"
+        CatalogSortMode.LONGEST_FIRST -> "Longest"
+    }
+    val nextSortMode = when (sortMode) {
+        CatalogSortMode.DEFAULT -> CatalogSortMode.QUALITY_FIRST
+        CatalogSortMode.QUALITY_FIRST -> CatalogSortMode.LONGEST_FIRST
+        CatalogSortMode.LONGEST_FIRST -> CatalogSortMode.DEFAULT
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(HarborColors.Background)
-            .padding(horizontal = 28.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(
+                horizontal = if (compactGridMode) 24.dp else 28.dp,
+                vertical = if (compactGridMode) 14.dp else 22.dp
+            ),
+        verticalArrangement = Arrangement.spacedBy(if (compactGridMode) 10.dp else 14.dp)
     ) {
-        Text(
-            text = "Search",
-            style = MaterialTheme.typography.headlineMedium,
-            color = HarborColors.TextPrimary
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                label = { Text("Search videos, tags, or creators") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(
-                    onSearch = { onSearch(null) }
-                ),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = HarborColors.TextPrimary,
-                    unfocusedTextColor = HarborColors.TextPrimary,
-                    focusedBorderColor = HarborColors.FocusCyan,
-                    unfocusedBorderColor = HarborColors.BorderSubtle
-                ),
-                modifier = Modifier.weight(1f)
-            )
-            TvActionButton(
-                label = "Search",
-                tone = TvButtonTone.PRIMARY,
-                onClick = { onSearch(null) }
-            )
-            TvActionButton(
-                label = "Voice Search",
-                tone = TvButtonTone.ACCENT,
-                onClick = {
-                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                        putExtra(
-                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                        )
-                        putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to search videos")
-                    }
-                    try {
-                        voiceNotice = null
-                        voiceSearchLauncher.launch(intent)
-                    } catch (_: ActivityNotFoundException) {
-                        voiceNotice = "Voice search is not available on this TV device. Use the on-screen keyboard or Remote Keypad."
-                    } catch (_: Exception) {
-                        voiceNotice = "Unable to start voice search on this device."
-                    }
+        if (compactGridMode) {
+            val activeSummary = buildString {
+                if (query.isNotBlank()) {
+                    append("\"$query\"")
+                } else {
+                    append("Results")
                 }
-            )
-            TvActionButton(
-                label = if (showRemoteKeys) "Hide Keypad" else "Remote Keypad",
-                onClick = { showRemoteKeys = !showRemoteKeys }
-            )
-            TvActionButton(
-                label = "Clear",
-                onClick = {
-                    voiceNotice = null
-                    onQueryChange("")
-                    onSearch("")
+                if (selectedSourceFilterId != null) {
+                    append(" • ${friendlySiteName(selectedSourceFilterId)}")
                 }
-            )
-        }
-
-        voiceNotice?.let { notice ->
-            TvStatusBanner(
-                title = "Voice Search Unavailable",
-                body = notice,
-                accentColor = HarborColors.WarningAmber
-            )
-        }
-
-        if (showRemoteKeys) {
-            val keys = remember {
-                ("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".map { it.toString() }) +
-                    listOf("SPACE", "DEL", "GO")
+                if (only4kFilter) {
+                    append(" • 4K")
+                }
+                append(" (${displayedResults.size})")
             }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                keys.forEach { k ->
-                    TvActionButton(
-                        label = k,
-                        onClick = {
-                            when (k) {
-                                "SPACE" -> onQueryChange("$query ")
-                                "DEL" -> if (query.isNotEmpty()) onQueryChange(query.dropLast(1))
-                                "GO" -> onSearch(null)
-                                else -> onQueryChange(query + k.lowercase())
-                            }
-                        }
-                    )
-                }
-            }
-        }
+            val isFiltered = query.isNotBlank() || only4kFilter || selectedSourceFilterId != null
 
-        // Recent Searches strip
-        if (recentSearches.isNotEmpty()) {
             LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                item(key = "recent_label") {
+                item(key = "search_slim_summary") {
                     Text(
-                        text = "Recent Searches:",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = HarborColors.TextSecondary
+                        text = activeSummary,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = HarborColors.FocusCyan,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(end = 4.dp)
                     )
                 }
-                items(recentSearches, key = { "recent_$it" }) { term ->
+                item(key = "search_slim_expand") {
                     TvTagChip(
-                        label = term,
-                        selected = query.equals(term, ignoreCase = true),
-                        onClick = {
-                            onQueryChange(term)
-                            onSearch(term)
+                        label = "Search & Filters ▾",
+                        onClick = { filtersExpanded = true }
+                    )
+                }
+                item(key = "search_slim_4k") {
+                    TvTagChip(
+                        label = if (only4kFilter) "4K Only: ON" else "4K Only",
+                        selected = only4kFilter,
+                        onClick = onToggleOnly4kFilter
+                    )
+                }
+                item(key = "search_slim_sort") {
+                    TvTagChip(
+                        label = "Sort: $sortLabel",
+                        selected = sortMode != CatalogSortMode.DEFAULT,
+                        onClick = { onSelectSortMode(nextSortMode) }
+                    )
+                }
+                if (isFiltered) {
+                    item(key = "search_slim_clear") {
+                        TvTagChip(
+                            label = "Clear",
+                            onClick = {
+                                voiceNotice = null
+                                onSelectSourceFilter(null)
+                                if (only4kFilter) onToggleOnly4kFilter()
+                                onQueryChange("")
+                                onSearch("")
+                                filtersExpanded = true
+                            }
+                        )
+                    }
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Search",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = HarborColors.TextPrimary
+                )
+                if (displayedResults.isNotEmpty()) {
+                    TvTagChip(
+                        label = "Hide Filters ▴",
+                        onClick = { filtersExpanded = false }
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    label = { Text("Search videos, tags, or creators") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            if (results.isNotEmpty()) filtersExpanded = false
+                            onSearch(null)
                         }
-                    )
-                }
-                item(key = "recent_clear") {
-                    TvTagChip(
-                        label = "Clear",
-                        onClick = onClearRecentSearches
-                    )
-                }
-            }
-        }
-
-        // Personalized label combinations
-        if (topLabelCombos.isNotEmpty()) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(topLabelCombos, key = { "search_combo_${it.searchQuery}" }) { combo ->
-                    TvTagChip(
-                        label = combo.displayTitle,
-                        selected = query.equals(combo.searchQuery, ignoreCase = true),
-                        onClick = { onApplyLabelCombo(combo) }
-                    )
-                }
-            }
-        }
-
-        // Quick search suggestions
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(quickSuggestions) { suggestion ->
-                TvTagChip(
-                    label = suggestion,
-                    selected = query.equals(suggestion, ignoreCase = true),
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = HarborColors.TextPrimary,
+                        unfocusedTextColor = HarborColors.TextPrimary,
+                        focusedBorderColor = HarborColors.FocusCyan,
+                        unfocusedBorderColor = HarborColors.BorderSubtle
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+                TvActionButton(
+                    label = "Search",
+                    tone = TvButtonTone.PRIMARY,
                     onClick = {
-                        onQueryChange(suggestion)
-                        onSearch(suggestion)
+                        if (results.isNotEmpty()) filtersExpanded = false
+                        onSearch(null)
+                    }
+                )
+                TvActionButton(
+                    label = "Voice Search",
+                    tone = TvButtonTone.ACCENT,
+                    onClick = {
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(
+                                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                            )
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to search videos")
+                        }
+                        try {
+                            voiceNotice = null
+                            voiceSearchLauncher.launch(intent)
+                        } catch (_: ActivityNotFoundException) {
+                            voiceNotice = "Voice search is not available on this TV device. Use the on-screen keyboard or Remote Keypad."
+                        } catch (_: Exception) {
+                            voiceNotice = "Unable to start voice search on this device."
+                        }
+                    }
+                )
+                TvActionButton(
+                    label = if (showRemoteKeys) "Hide Keypad" else "Remote Keypad",
+                    onClick = { showRemoteKeys = !showRemoteKeys }
+                )
+                TvActionButton(
+                    label = "Clear",
+                    onClick = {
+                        voiceNotice = null
+                        onQueryChange("")
+                        onSearch("")
                     }
                 )
             }
-        }
 
-        // Friendly site filters + 4K toggle + Sort chips
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
-                TvTagChip(
-                    label = if (only4kFilter) "4K Only: ON" else "4K Only",
-                    selected = only4kFilter,
-                    onClick = onToggleOnly4kFilter
+            voiceNotice?.let { notice ->
+                TvStatusBanner(
+                    title = "Voice Search Unavailable",
+                    body = notice,
+                    accentColor = HarborColors.WarningAmber
                 )
             }
-            item {
-                TvTagChip(
-                    label = "Default Order",
-                    selected = sortMode == CatalogSortMode.DEFAULT,
-                    onClick = { onSelectSortMode(CatalogSortMode.DEFAULT) }
-                )
+
+            if (showRemoteKeys) {
+                val keys = remember {
+                    ("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".map { it.toString() }) +
+                        listOf("SPACE", "DEL", "GO")
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    keys.forEach { k ->
+                        TvActionButton(
+                            label = k,
+                            onClick = {
+                                when (k) {
+                                    "SPACE" -> onQueryChange("$query ")
+                                    "DEL" -> if (query.isNotEmpty()) onQueryChange(query.dropLast(1))
+                                    "GO" -> onSearch(null)
+                                    else -> onQueryChange(query + k.lowercase())
+                                }
+                            }
+                        )
+                    }
+                }
             }
-            item {
-                TvTagChip(
-                    label = "4K First",
-                    selected = sortMode == CatalogSortMode.QUALITY_FIRST,
-                    onClick = { onSelectSortMode(CatalogSortMode.QUALITY_FIRST) }
-                )
+
+            // Recent Searches strip
+            if (recentSearches.isNotEmpty()) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    item(key = "recent_label") {
+                        Text(
+                            text = "Recent Searches:",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = HarborColors.TextSecondary
+                        )
+                    }
+                    items(recentSearches, key = { "recent_$it" }) { term ->
+                        TvTagChip(
+                            label = term,
+                            selected = query.equals(term, ignoreCase = true),
+                            onClick = {
+                                onQueryChange(term)
+                                onSearch(term)
+                            }
+                        )
+                    }
+                    item(key = "recent_clear") {
+                        TvTagChip(
+                            label = "Clear",
+                            onClick = onClearRecentSearches
+                        )
+                    }
+                }
             }
-            item {
-                TvTagChip(
-                    label = "Longest",
-                    selected = sortMode == CatalogSortMode.LONGEST_FIRST,
-                    onClick = { onSelectSortMode(CatalogSortMode.LONGEST_FIRST) }
-                )
+
+            // Personalized label combinations
+            if (topLabelCombos.isNotEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(topLabelCombos, key = { "search_combo_${it.searchQuery}" }) { combo ->
+                        TvTagChip(
+                            label = combo.displayTitle,
+                            selected = query.equals(combo.searchQuery, ignoreCase = true),
+                            onClick = { onApplyLabelCombo(combo) }
+                        )
+                    }
+                }
             }
-            item {
-                TvTagChip(
-                    label = "All Sites",
-                    selected = selectedSourceFilterId == null,
-                    onClick = { onSelectSourceFilter(null) }
-                )
+
+            // Quick search suggestions
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(quickSuggestions) { suggestion ->
+                    TvTagChip(
+                        label = suggestion,
+                        selected = query.equals(suggestion, ignoreCase = true),
+                        onClick = {
+                            onQueryChange(suggestion)
+                            onSearch(suggestion)
+                        }
+                    )
+                }
             }
-            items(enabledSourceIds) { sourceId ->
-                TvTagChip(
-                    label = friendlySiteName(sourceId),
-                    selected = selectedSourceFilterId == sourceId,
-                    onClick = { onSelectSourceFilter(sourceId) }
-                )
+
+            // Friendly site filters + 4K toggle + Sort chips
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    TvTagChip(
+                        label = if (only4kFilter) "4K Only: ON" else "4K Only",
+                        selected = only4kFilter,
+                        onClick = onToggleOnly4kFilter
+                    )
+                }
+                item {
+                    TvTagChip(
+                        label = "Default Order",
+                        selected = sortMode == CatalogSortMode.DEFAULT,
+                        onClick = { onSelectSortMode(CatalogSortMode.DEFAULT) }
+                    )
+                }
+                item {
+                    TvTagChip(
+                        label = "4K First",
+                        selected = sortMode == CatalogSortMode.QUALITY_FIRST,
+                        onClick = { onSelectSortMode(CatalogSortMode.QUALITY_FIRST) }
+                    )
+                }
+                item {
+                    TvTagChip(
+                        label = "Longest",
+                        selected = sortMode == CatalogSortMode.LONGEST_FIRST,
+                        onClick = { onSelectSortMode(CatalogSortMode.LONGEST_FIRST) }
+                    )
+                }
+                item {
+                    TvTagChip(
+                        label = "All Sites",
+                        selected = selectedSourceFilterId == null,
+                        onClick = { onSelectSourceFilter(null) }
+                    )
+                }
+                items(enabledSourceIds) { sourceId ->
+                    TvTagChip(
+                        label = friendlySiteName(sourceId),
+                        selected = selectedSourceFilterId == sourceId,
+                        onClick = { onSelectSourceFilter(sourceId) }
+                    )
+                }
             }
         }
 
@@ -329,7 +454,7 @@ fun SearchScreen(
             )
         }
 
-        if (isLoading) {
+        if (isLoading && !compactGridMode) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -343,16 +468,6 @@ fun SearchScreen(
             }
         }
 
-        val displayedResults = if (only4kFilter) {
-            results.filter { item ->
-                (item.maxResolutionHeight ?: 0) >= 2160 ||
-                    item.maxQualityLabel?.contains("4K", ignoreCase = true) == true ||
-                    item.title.contains("4k", ignoreCase = true)
-            }
-        } else {
-            results
-        }
-
         if (!isLoading && query.isNotBlank() && displayedResults.isEmpty()) {
             TvStatusBanner(
                 title = "No Matching Videos",
@@ -362,11 +477,13 @@ fun SearchScreen(
         }
 
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 250.dp),
-            contentPadding = PaddingValues(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier.weight(1f)
+            columns = GridCells.Adaptive(minSize = 196.dp),
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxSize()
         ) {
             items(displayedResults, key = { it.compositeId }) { item ->
                 val key = "search:${item.compositeId}"
@@ -375,6 +492,8 @@ fun SearchScreen(
                     focusRequester = requesterFor(key),
                     onFocused = { onFocusKeyChanged(key) },
                     previewEnabled = previewEnabled,
+                    fillWidth = true,
+                    compact = true,
                     onClick = { onOpenVideo(item) }
                 )
             }

@@ -57,6 +57,7 @@ class HarborSettingsStore(
         private val KEY_MEDIA_CACHE_LIMIT_MB = intPreferencesKey("media_cache_limit_mb")
         private val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next_enabled")
         private val KEY_FOCUS_PREVIEW_ENABLED = booleanPreferencesKey("focus_preview_enabled")
+        private val KEY_APP_LOCK_PIN_HASH = stringPreferencesKey("app_lock_pin_hash")
 
         private fun preferenceConfigKey(profileId: String): Preferences.Key<String> {
             return stringPreferencesKey("profile_preferences_${profileId.trim()}")
@@ -106,6 +107,10 @@ class HarborSettingsStore(
 
     val focusPreviewEnabledFlow: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[KEY_FOCUS_PREVIEW_ENABLED] ?: true
+    }
+
+    val appLockPinHashFlow: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[KEY_APP_LOCK_PIN_HASH]?.takeIf { it.isNotBlank() }
     }
 
     suspend fun getActiveProfileId(): String = activeProfileIdFlow.first()
@@ -163,6 +168,18 @@ class HarborSettingsStore(
     suspend fun setFocusPreviewEnabled(enabled: Boolean) {
         dataStore.edit { prefs ->
             prefs[KEY_FOCUS_PREVIEW_ENABLED] = enabled
+        }
+    }
+
+    suspend fun getAppLockPinHash(): String? = appLockPinHashFlow.first()
+
+    suspend fun setAppLockPinHash(pinHash: String?) {
+        dataStore.edit { prefs ->
+            if (pinHash.isNullOrBlank()) {
+                prefs.remove(KEY_APP_LOCK_PIN_HASH)
+            } else {
+                prefs[KEY_APP_LOCK_PIN_HASH] = pinHash.trim()
+            }
         }
     }
 

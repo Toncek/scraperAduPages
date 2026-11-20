@@ -48,6 +48,11 @@ import com.harbor.tv.core.tvui.TvFocusableCard
 import com.harbor.tv.core.tvui.TvStatusBanner
 import com.harbor.tv.core.tvui.TvTagChip
 
+private enum class PinDialogTarget {
+    APP_STARTUP,
+    PROFILE
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
@@ -61,6 +66,7 @@ fun SettingsScreen(
     minDurationSeconds: Int? = null,
     avoidRepeatsEnabled: Boolean = true,
     hiddenVideosCount: Int = 0,
+    hasAppLockPin: Boolean = false,
     tasteProfile: UserTasteProfile = UserTasteProfile(),
     topLabelCombos: List<LabelComboSuggestion> = emptyList(),
     mediaCacheLimitMb: Int = 1536,
@@ -89,6 +95,7 @@ fun SettingsScreen(
     onToggleAutoPlayNext: (Boolean) -> Unit = {},
     onToggleFocusPreview: (Boolean) -> Unit = {},
     onSetMediaCacheLimitMb: (Int) -> Unit = {},
+    onSetAppLockPin: (String?) -> Unit = {},
     onSetProfilePin: (String?) -> Unit,
     onClearCacheAndHistory: () -> Unit,
     onOpenPreferenceSetup: () -> Unit,
@@ -96,7 +103,7 @@ fun SettingsScreen(
     onOpenSources: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showPinSetupDialog by remember { mutableStateOf(false) }
+    var pinDialogTarget by remember { mutableStateOf<PinDialogTarget?>(null) }
     var draftPin by remember { mutableStateOf("") }
 
     Box(
@@ -447,6 +454,18 @@ fun SettingsScreen(
                         )
                     }
 
+                    SettingsToggleRow(
+                        title = "App Startup PIN Lock",
+                        subtitle = "Require a 4–6 digit PIN before opening Harbor on this TV.",
+                        valueLabel = if (hasAppLockPin) "ON" else "OFF",
+                        isEnabled = hasAppLockPin,
+                        accent = HarborColors.FocusCyan,
+                        onClick = {
+                            draftPin = ""
+                            pinDialogTarget = PinDialogTarget.APP_STARTUP
+                        }
+                    )
+
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -456,7 +475,7 @@ fun SettingsScreen(
                             tone = TvButtonTone.PRIMARY,
                             onClick = {
                                 draftPin = ""
-                                showPinSetupDialog = true
+                                pinDialogTarget = PinDialogTarget.PROFILE
                             }
                         )
                         TvActionButton(
@@ -534,7 +553,10 @@ fun SettingsScreen(
             }
         }
 
-        if (showPinSetupDialog) {
+        val activeDialogTarget = pinDialogTarget
+        if (activeDialogTarget != null) {
+            val isStartupPin = activeDialogTarget == PinDialogTarget.APP_STARTUP
+            val hasExistingPin = if (isStartupPin) hasAppLockPin else activeProfile.pinHash != null
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -552,7 +574,7 @@ fun SettingsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "Configure Profile PIN Lock",
+                        text = if (isStartupPin) "Configure App Startup PIN" else "Configure Profile PIN Lock",
                         style = MaterialTheme.typography.titleLarge,
                         color = HarborColors.TextPrimary
                     )
@@ -592,25 +614,33 @@ fun SettingsScreen(
                         TvActionButton(
                             label = "Save PIN",
                             tone = TvButtonTone.PRIMARY,
-                            enabled = draftPin.length >= 4,
+                            enabled = draftPin.length in 4..6,
                             onClick = {
-                                onSetProfilePin(draftPin)
-                                showPinSetupDialog = false
+                                if (isStartupPin) {
+                                    onSetAppLockPin(draftPin)
+                                } else {
+                                    onSetProfilePin(draftPin)
+                                }
+                                pinDialogTarget = null
                             }
                         )
-                        if (activeProfile.pinHash != null) {
+                        if (hasExistingPin) {
                             TvActionButton(
                                 label = "Remove PIN",
                                 tone = TvButtonTone.DANGER,
                                 onClick = {
-                                    onSetProfilePin(null)
-                                    showPinSetupDialog = false
+                                    if (isStartupPin) {
+                                        onSetAppLockPin(null)
+                                    } else {
+                                        onSetProfilePin(null)
+                                    }
+                                    pinDialogTarget = null
                                 }
                             )
                         }
                         TvActionButton(
                             label = "Cancel",
-                            onClick = { showPinSetupDialog = false }
+                            onClick = { pinDialogTarget = null }
                         )
                     }
                 }

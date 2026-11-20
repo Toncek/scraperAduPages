@@ -132,6 +132,10 @@ data class ApprovalReviewState(
 )
 
 data class HarborUiState(
+    val isAppLockChecked: Boolean = false,
+    val isAppLocked: Boolean = false,
+    val hasAppLockPin: Boolean = false,
+    val appLockError: String? = null,
     val currentScreen: HarborScreen = HarborScreen.WELCOME,
     val onboardingCompleted: Boolean = false,
     val profiles: List<UserProfile> = emptyList(),
@@ -289,6 +293,16 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun initializeAppState() {
         viewModelScope.launch {
+            val appPinHash = settingsStore.getAppLockPinHash()
+            val lockedAtStart = !appPinHash.isNullOrBlank()
+            _uiState.update {
+                it.copy(
+                    isAppLockChecked = true,
+                    isAppLocked = lockedAtStart,
+                    hasAppLockPin = lockedAtStart,
+                    appLockError = null
+                )
+            }
             ensureDefaultProfileExists()
             ensureBundledDefaultSourcesSeeded()
             withContext(Dispatchers.IO) {
@@ -751,6 +765,57 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun unlockAppWithPin(enteredPin: String) {
+        viewModelScope.launch {
+            val storedHash = settingsStore.getAppLockPinHash()
+            if (storedHash.isNullOrBlank() || PinHasher.verifyPin(enteredPin.trim(), storedHash)) {
+                _uiState.update {
+                    it.copy(
+                        isAppLocked = false,
+                        appLockError = null
+                    )
+                }
+                refreshVisibleCatalogForCurrentState()
+            } else {
+                _uiState.update {
+                    it.copy(appLockError = "Incorrect PIN. Try again.")
+                }
+            }
+        }
+    }
+
+    fun setAppLockPin(newPin: String?) {
+        viewModelScope.launch {
+            val clean = newPin?.trim().orEmpty()
+            if (clean.isEmpty()) {
+                settingsStore.setAppLockPinHash(null)
+                _uiState.update {
+                    it.copy(
+                        hasAppLockPin = false,
+                        isAppLocked = false,
+                        appLockError = null,
+                        statusMessage = "App startup PIN lock removed."
+                    )
+                }
+                return@launch
+            }
+            if (clean.length !in 4..6 || !clean.all(Char::isDigit)) {
+                _uiState.update {
+                    it.copy(errorMessage = "Startup PIN must be 4 to 6 digits.")
+                }
+                return@launch
+            }
+            val hash = PinHasher.hashPin(clean)
+            settingsStore.setAppLockPinHash(hash)
+            _uiState.update {
+                it.copy(
+                    hasAppLockPin = true,
+                    statusMessage = "App startup PIN lock enabled. Required next time Harbor opens."
+                )
+            }
+        }
+    }
+
     fun setProfilePin(newPin: String?) {
         viewModelScope.launch {
             val hash = newPin?.trim()?.takeIf { it.isNotEmpty() }?.let { PinHasher.hashPin(it) }
@@ -1151,6 +1216,9 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun refreshVisibleCatalogForCurrentState() {
         val state = _uiState.value
+        if (state.isAppLocked) {
+            return
+        }
         val enabledIds = state.registeredSources
             .filter { it.lifecycleState == DefinitionLifecycleState.ENABLED }
             .map { it.record.sourceId }

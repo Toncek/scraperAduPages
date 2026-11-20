@@ -45,6 +45,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.harbor.tv.core.model.PreferenceConfig
 import com.harbor.tv.core.model.QualityPreference
@@ -938,5 +945,182 @@ fun PreferenceSetupScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun AppStartupPinLockScreen(
+    errorMessage: String?,
+    onSubmitPin: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var enteredPin by remember { mutableStateOf("") }
+    val firstDigitFocus = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        runCatching { firstDigitFocus.requestFocus() }
+    }
+
+    LaunchedEffect(errorMessage) {
+        if (!errorMessage.isNullOrBlank()) {
+            enteredPin = ""
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(HarborColors.Background)
+            .onPreviewKeyEvent { event ->
+                val digitChar = remoteKeyToDigit(event.key)
+                if (digitChar != null) {
+                    if (event.type == KeyEventType.KeyUp && enteredPin.length < 6) {
+                        enteredPin += digitChar
+                    }
+                    return@onPreviewKeyEvent true
+                }
+                if (event.key == Key.Backspace) {
+                    if (event.type == KeyEventType.KeyUp && enteredPin.isNotEmpty()) {
+                        enteredPin = enteredPin.dropLast(1)
+                    }
+                    return@onPreviewKeyEvent true
+                }
+                false
+            }
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyUp &&
+                    (event.key == Key.Enter || event.key == Key.NumPadEnter) &&
+                    enteredPin.length in 4..6
+                ) {
+                    onSubmitPin(enteredPin)
+                    true
+                } else {
+                    false
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .width(460.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(HarborColors.Surface)
+                .border(1.5.dp, HarborColors.FocusCyan.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
+                .padding(horizontal = 32.dp, vertical = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(HarborColors.FocusCyan.copy(alpha = 0.16f))
+                    .border(1.dp, HarborColors.FocusCyan.copy(alpha = 0.55f), RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Lock,
+                    contentDescription = "Locked",
+                    tint = HarborColors.FocusCyan,
+                    modifier = Modifier.size(30.dp)
+                )
+            }
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "Harbor is Locked",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = HarborColors.TextPrimary
+                )
+                Text(
+                    text = "Enter your 4–6 digit startup PIN to continue.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = HarborColors.TextSecondary
+                )
+            }
+
+            // Masked PIN dots
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                repeat(6) { idx ->
+                    val filled = idx < enteredPin.length
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (filled) HarborColors.FocusCyan else HarborColors.SurfaceCard
+                            )
+                            .border(
+                                width = 1.5.dp,
+                                color = if (filled) HarborColors.FocusCyan else HarborColors.BorderSubtle,
+                                shape = RoundedCornerShape(50)
+                            )
+                    )
+                }
+            }
+
+            if (!errorMessage.isNullOrBlank()) {
+                Text(
+                    text = errorMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = HarborColors.DangerRed
+                )
+            }
+
+            listOf(
+                listOf("1", "2", "3"),
+                listOf("4", "5", "6"),
+                listOf("7", "8", "9"),
+                listOf("Clear", "0", "Del")
+            ).forEachIndexed { rowIdx, rowDigits ->
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    rowDigits.forEachIndexed { colIdx, keyLabel ->
+                        TvActionButton(
+                            label = keyLabel,
+                            focusRequester = if (rowIdx == 0 && colIdx == 0) firstDigitFocus else null,
+                            onClick = {
+                                when (keyLabel) {
+                                    "Clear" -> enteredPin = ""
+                                    "Del" -> if (enteredPin.isNotEmpty()) enteredPin = enteredPin.dropLast(1)
+                                    else -> if (enteredPin.length < 6) enteredPin += keyLabel
+                                }
+                            },
+                            modifier = Modifier.width(114.dp)
+                        )
+                    }
+                }
+            }
+
+            TvActionButton(
+                label = "Unlock",
+                tone = TvButtonTone.PRIMARY,
+                enabled = enteredPin.length in 4..6,
+                onClick = { onSubmitPin(enteredPin) },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+private fun remoteKeyToDigit(key: Key): Char? {
+    return when (key) {
+        Key.Zero, Key.NumPad0 -> '0'
+        Key.One, Key.NumPad1 -> '1'
+        Key.Two, Key.NumPad2 -> '2'
+        Key.Three, Key.NumPad3 -> '3'
+        Key.Four, Key.NumPad4 -> '4'
+        Key.Five, Key.NumPad5 -> '5'
+        Key.Six, Key.NumPad6 -> '6'
+        Key.Seven, Key.NumPad7 -> '7'
+        Key.Eight, Key.NumPad8 -> '8'
+        Key.Nine, Key.NumPad9 -> '9'
+        else -> null
     }
 }
