@@ -10,10 +10,19 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.harbor.tv.core.model.QualityPreference
 import com.harbor.tv.core.model.UnknownMetadataMode
@@ -74,32 +85,21 @@ fun SettingsScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 28.dp, vertical = 22.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 32.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "Settings (${activeProfile.name})",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = HarborColors.TextPrimary
-                        )
-                        Text(
-                            text = "Local privacy, metadata strictness, stream quality, network permissions, and profile lock.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = HarborColors.TextSecondary
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        TvActionButton(label = "Tag Preferences", onClick = onOpenPreferenceSetup)
-                        TvActionButton(label = "Profiles", onClick = onOpenProfileSelection)
-                        TvActionButton(label = "Sources", onClick = onOpenSources)
-                    }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Settings",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = HarborColors.TextPrimary
+                    )
+                    Text(
+                        text = "Active profile: ${activeProfile.name}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = HarborColors.TextSecondary
+                    )
                 }
             }
 
@@ -113,92 +113,28 @@ fun SettingsScreen(
                 }
             }
 
+            // 1. Video & 4K Playback
             item {
-                SettingsToggleRow(
-                    title = "Private Session Mode",
-                    subtitle = "Avoids persisting search history, watch history, resume positions, and media cache. Does not protect from network operators, source providers, or device administrators.",
-                    valueLabel = if (isPrivateSession) "ON" else "OFF",
-                    isEnabled = isPrivateSession,
-                    accent = HarborColors.PrivatePurple,
-                    onClick = { onTogglePrivateSession(!isPrivateSession) }
-                )
-            }
-
-            item {
-                val isStrict = activeProfile.unknownMetadataMode == UnknownMetadataMode.STRICT
-                SettingsToggleRow(
-                    title = "Unknown Metadata Mode",
-                    subtitle = if (isStrict) {
-                        "Strict: items lacking complete classification are hidden (depends on source metadata and mappings)."
-                    } else {
-                        "Standard: items with unknown optional tags remain eligible unless excluded."
-                    },
-                    valueLabel = activeProfile.unknownMetadataMode.name,
-                    isEnabled = isStrict,
-                    accent = HarborColors.FocusCyan,
-                    onClick = {
-                        onSetUnknownMetadataMode(
-                            if (isStrict) UnknownMetadataMode.STANDARD else UnknownMetadataMode.STRICT
+                SettingsGroupCard(
+                    title = "Video & 4K Playback",
+                    subtitle = "Choose your preferred stream quality and hardware decoding targets.",
+                    icon = Icons.Rounded.PlayArrow,
+                    accent = HarborColors.Gold4K
+                ) {
+                    if (hwCodecSummary.isNotBlank()) {
+                        Text(
+                            text = hwCodecSummary,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = HarborColors.FocusCyan
                         )
                     }
-                )
-            }
-
-            item {
-                SettingsToggleRow(
-                    title = "Offline Fixture-Backed Browsing Mode",
-                    subtitle = "Serves bundled offline HTML/JSON fixtures for installed demo sources so you can browse and inspect out of the box without live network access.",
-                    valueLabel = if (offlineFixtureMode) "FIXTURES ON" else "LIVE NETWORK",
-                    isEnabled = offlineFixtureMode,
-                    accent = HarborColors.AccentTeal,
-                    onClick = { onToggleOfflineFixtureMode(!offlineFixtureMode) }
-                )
-            }
-
-            item {
-                SettingsToggleRow(
-                    title = "Allow LAN / Local Network Sources",
-                    subtitle = "Explicit permission mode required before user-owned local network sources may resolve private/loopback/link-local addresses.",
-                    valueLabel = if (activeProfile.allowLanSources) "ALLOWED" else "BLOCKED",
-                    isEnabled = activeProfile.allowLanSources,
-                    accent = HarborColors.WarningAmber,
-                    onClick = { onToggleAllowLan(!activeProfile.allowLanSources) }
-                )
-            }
-
-            item {
-                SettingsToggleRow(
-                    title = "Local Watch History & Resume Position",
-                    subtitle = "Saves watch progress locally when Private Session is OFF.",
-                    valueLabel = if (activeProfile.historyEnabled) "ENABLED" else "DISABLED",
-                    isEnabled = activeProfile.historyEnabled,
-                    accent = HarborColors.FocusCyan,
-                    onClick = { onToggleHistoryEnabled(!activeProfile.historyEnabled) }
-                )
-            }
-
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(HarborColors.SurfaceCard)
-                        .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(14.dp))
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Playback Quality Preference",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = HarborColors.TextPrimary
-                    )
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         QualityPreference.entries.forEach { mode ->
                             TvTagChip(
-                                label = mode.name.replace('_', ' '),
+                                label = friendlyQualityModeLabel(mode),
                                 selected = activeProfile.qualityPreference == mode,
                                 onClick = {
                                     onSetQualityPreference(
@@ -210,10 +146,17 @@ fun SettingsScreen(
                             )
                         }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        listOf(720, 1080, 2160).forEach { res ->
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        listOf(
+                            720 to "720p HD",
+                            1080 to "1080p Full HD",
+                            2160 to "4K Ultra HD"
+                        ).forEach { (res, label) ->
                             TvTagChip(
-                                label = "${res}p Target",
+                                label = label,
                                 selected = activeProfile.preferredResolutionHeight == res,
                                 onClick = {
                                     onSetQualityPreference(
@@ -226,7 +169,7 @@ fun SettingsScreen(
                         }
                         listOf(2500, 5000, 10000).forEach { kbps ->
                             TvTagChip(
-                                label = "${kbps} kbps",
+                                label = "${kbps / 1000.0} Mbps".replace(".0 ", " "),
                                 selected = activeProfile.preferredBitrateKbps == kbps,
                                 onClick = {
                                     onSetQualityPreference(
@@ -241,50 +184,60 @@ fun SettingsScreen(
                 }
             }
 
+            // 2. Storage & Preloading
             item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(HarborColors.SurfaceCard)
-                        .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(14.dp))
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                val safeMaxBytes = mediaCacheMaxBytes.coerceAtLeast(1L)
+                val usedFraction = (mediaCacheUsedBytes.toFloat() / safeMaxBytes.toFloat()).coerceIn(0f, 1f)
+                val usedMb = mediaCacheUsedBytes.toDouble() / (1024.0 * 1024.0)
+                val maxGb = safeMaxBytes.toDouble() / (1024.0 * 1024.0 * 1024.0)
+                val freeGb = availableStorageBytes.toDouble() / (1024.0 * 1024.0 * 1024.0)
+
+                SettingsGroupCard(
+                    title = "Storage & Preloading",
+                    subtitle = "Manage TV storage cache size and background video preloading.",
+                    icon = Icons.Rounded.Refresh,
+                    accent = HarborColors.AccentTeal
                 ) {
-                    Text(
-                        text = "Persistent Storage & Video Preloading",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = HarborColors.TextPrimary
-                    )
-                    val usedMb = mediaCacheUsedBytes.toDouble() / (1024.0 * 1024.0)
-                    val maxGb = mediaCacheMaxBytes.toDouble() / (1024.0 * 1024.0 * 1024.0)
-                    val freeGb = availableStorageBytes.toDouble() / (1024.0 * 1024.0 * 1024.0)
-                    Text(
-                        text = String.format(
-                            "ROM Video Cache (noBackupFilesDir): %.1f MB used / %.2f GB limit • Free Storage: %.2f GB",
-                            usedMb,
-                            maxGb,
-                            freeGb
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = HarborColors.AccentTeal
-                    )
-                    if (hwCodecSummary.isNotBlank()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LinearProgressIndicator(
+                            progress = { usedFraction },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(10.dp)
+                                .clip(RoundedCornerShape(5.dp)),
+                            color = HarborColors.AccentTeal,
+                            trackColor = HarborColors.Background
+                        )
                         Text(
-                            text = hwCodecSummary,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = HarborColors.FocusCyan
+                            text = String.format(
+                                "%.1f MB used / %.2f GB limit • %.2f GB free on TV",
+                                usedMb,
+                                maxGb,
+                                freeGb
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = HarborColors.TextSecondary
                         )
                     }
+
                     SettingsToggleRow(
-                        title = "Background Video Preloading to ROM",
-                        subtitle = "Preloads opening segments (24 MB) on Video Details into persistent ROM storage when Private Session is OFF.",
+                        title = "Background Video Preloading",
+                        subtitle = "Preloads opening segments on Video Details for faster playback start.",
                         valueLabel = if (videoPreloadEnabled) "ON" else "OFF",
                         isEnabled = videoPreloadEnabled,
                         accent = HarborColors.AccentTeal,
                         onClick = { onToggleVideoPreload(!videoPreloadEnabled) }
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Cache Limit:",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = HarborColors.TextSecondary
+                        )
                         listOf(
                             1024 to "1.0 GB",
                             1536 to "1.5 GB",
@@ -297,26 +250,113 @@ fun SettingsScreen(
                             )
                         }
                     }
-                }
-            }
 
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    TvActionButton(
-                        label = if (activeProfile.pinHash != null) "Change / Remove PIN Lock" else "Set Profile PIN Lock",
-                        tone = TvButtonTone.PRIMARY,
-                        onClick = {
-                            draftPin = ""
-                            showPinSetupDialog = true
-                        }
-                    )
                     TvActionButton(
                         label = "Clear Cache & Watch History",
                         tone = TvButtonTone.DANGER,
                         onClick = onClearCacheAndHistory
+                    )
+                }
+            }
+
+            // 3. Privacy & Profiles
+            item {
+                val isStrict = activeProfile.unknownMetadataMode == UnknownMetadataMode.STRICT
+                SettingsGroupCard(
+                    title = "Privacy & Profiles",
+                    subtitle = "Control private browsing, watch history, content filtering, and PIN locks.",
+                    icon = Icons.Rounded.Lock,
+                    accent = HarborColors.PrivatePurple
+                ) {
+                    SettingsToggleRow(
+                        title = "Private Session Mode",
+                        subtitle = "Skips saving watch history, resume positions, and video cache this session.",
+                        valueLabel = if (isPrivateSession) "ON" else "OFF",
+                        isEnabled = isPrivateSession,
+                        accent = HarborColors.PrivatePurple,
+                        onClick = { onTogglePrivateSession(!isPrivateSession) }
+                    )
+
+                    SettingsToggleRow(
+                        title = "Watch History & Resume",
+                        subtitle = "Saves playback progress locally when Private Session is off.",
+                        valueLabel = if (activeProfile.historyEnabled) "ON" else "OFF",
+                        isEnabled = activeProfile.historyEnabled,
+                        accent = HarborColors.FocusCyan,
+                        onClick = { onToggleHistoryEnabled(!activeProfile.historyEnabled) }
+                    )
+
+                    SettingsToggleRow(
+                        title = "Strict Metadata Filter",
+                        subtitle = if (isStrict) {
+                            "Strict: hides videos missing complete tags or classification."
+                        } else {
+                            "Standard: shows videos unless they match an excluded tag."
+                        },
+                        valueLabel = if (isStrict) "STRICT" else "STANDARD",
+                        isEnabled = isStrict,
+                        accent = HarborColors.FocusCyan,
+                        onClick = {
+                            onSetUnknownMetadataMode(
+                                if (isStrict) UnknownMetadataMode.STANDARD else UnknownMetadataMode.STRICT
+                            )
+                        }
+                    )
+
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        TvActionButton(
+                            label = if (activeProfile.pinHash != null) "Change or Remove PIN" else "Set Profile PIN",
+                            tone = TvButtonTone.PRIMARY,
+                            onClick = {
+                                draftPin = ""
+                                showPinSetupDialog = true
+                            }
+                        )
+                        TvActionButton(
+                            label = "Switch Profile",
+                            onClick = onOpenProfileSelection
+                        )
+                        TvActionButton(
+                            label = "Tag Preferences",
+                            onClick = onOpenPreferenceSetup
+                        )
+                    }
+                }
+            }
+
+            // 4. Sources & Advanced
+            item {
+                SettingsGroupCard(
+                    title = "Sources & Advanced",
+                    subtitle = "Manage installed websites, offline sample mode, and local network access.",
+                    icon = Icons.Rounded.Settings,
+                    accent = HarborColors.FocusCyan
+                ) {
+                    SettingsToggleRow(
+                        title = "Offline Sample Mode",
+                        subtitle = "Browse built-in sample catalogs safely without live network requests.",
+                        valueLabel = if (offlineFixtureMode) "FIXTURES ON" else "LIVE NETWORK",
+                        isEnabled = offlineFixtureMode,
+                        accent = HarborColors.AccentTeal,
+                        onClick = { onToggleOfflineFixtureMode(!offlineFixtureMode) }
+                    )
+
+                    SettingsToggleRow(
+                        title = "Allow Local Network (LAN) Sources",
+                        subtitle = "Permits user-owned home-network media servers on private IP addresses.",
+                        valueLabel = if (activeProfile.allowLanSources) "ALLOWED" else "BLOCKED",
+                        isEnabled = activeProfile.allowLanSources,
+                        accent = HarborColors.WarningAmber,
+                        onClick = { onToggleAllowLan(!activeProfile.allowLanSources) }
+                    )
+
+                    TvActionButton(
+                        label = "Manage Sources",
+                        tone = TvButtonTone.PRIMARY,
+                        onClick = onOpenSources
                     )
                 }
             }
@@ -407,18 +447,82 @@ fun SettingsScreen(
     }
 }
 
+private fun friendlyQualityModeLabel(mode: QualityPreference): String {
+    return when (mode) {
+        QualityPreference.HIGHEST_AVAILABLE -> "Highest Available"
+        QualityPreference.PREFERRED_RESOLUTION -> "Preferred Resolution"
+        QualityPreference.PREFERRED_BITRATE -> "Preferred Bitrate"
+        QualityPreference.MANUAL -> "Manual"
+        QualityPreference.AUTO_FALLBACK -> "Auto Fallback"
+    }
+}
+
+@Composable
+private fun SettingsGroupCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    accent: Color,
+    content: @Composable () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(HarborColors.SurfaceCard)
+            .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(16.dp))
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(accent.copy(alpha = 0.16f))
+                    .border(1.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = accent,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = HarborColors.TextPrimary
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = HarborColors.TextSecondary
+                )
+            }
+        }
+        content()
+    }
+}
+
 @Composable
 private fun SettingsToggleRow(
     title: String,
     subtitle: String,
     valueLabel: String,
     isEnabled: Boolean,
-    accent: androidx.compose.ui.graphics.Color,
+    accent: Color,
     onClick: () -> Unit
 ) {
     TvFocusableCard(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
+        containerColor = HarborColors.SurfaceElevated,
         unfocusedBorderColor = if (isEnabled) accent.copy(alpha = 0.7f) else HarborColors.BorderSubtle
     ) {
         Row(
@@ -428,11 +532,11 @@ private fun SettingsToggleRow(
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     color = HarborColors.TextPrimary
                 )
                 Text(

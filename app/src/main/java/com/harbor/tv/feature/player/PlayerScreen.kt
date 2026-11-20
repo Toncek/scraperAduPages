@@ -40,6 +40,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -126,7 +128,7 @@ fun PlayerScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(HarborColors.Background)
+            .background(Color.Black)
             .focusRequester(rootFocusRequester)
             .focusable()
             .onPreviewKeyEvent { event ->
@@ -142,7 +144,7 @@ fun PlayerScreen(
                     return@onPreviewKeyEvent true
                 }
 
-                // Spec 18.4: Center reveals controls when hidden
+                // Spec 18.4: Center reveals controls cleanly when hidden
                 if (!controlsVisible && (key == Key.DirectionCenter || key == Key.Enter || key == Key.NumPadEnter)) {
                     if (event.type == KeyEventType.KeyUp) {
                         controlsVisible = true
@@ -150,10 +152,23 @@ fun PlayerScreen(
                     return@onPreviewKeyEvent true
                 }
 
-                // Reveal controls on directional keys when hidden
-                if (!controlsVisible && (key == Key.DirectionUp || key == Key.DirectionDown ||
-                        key == Key.DirectionLeft || key == Key.DirectionRight)
-                ) {
+                // Instant -10s / +10s seek when pressing Left / Right even while controls are hidden
+                if (!controlsVisible && (key == Key.DirectionLeft || key == Key.DirectionRight)) {
+                    if (uiState.isSeekable) {
+                        if (event.type == KeyEventType.KeyDown) {
+                            val deltaMs = if (key == Key.DirectionLeft) -10_000L else 10_000L
+                            controller.seekBy(deltaMs)
+                            controlsVisible = true
+                            bumpInteraction()
+                        }
+                    } else if (event.type == KeyEventType.KeyUp) {
+                        controlsVisible = true
+                    }
+                    return@onPreviewKeyEvent true
+                }
+
+                // Reveal controls on Up / Down when hidden
+                if (!controlsVisible && (key == Key.DirectionUp || key == Key.DirectionDown)) {
                     if (event.type == KeyEventType.KeyUp) {
                         controlsVisible = true
                     }
@@ -187,7 +202,7 @@ fun PlayerScreen(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(HarborColors.Scrim)
+                    .background(Color(0xCC060911))
                     .padding(horizontal = 24.dp, vertical = 18.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -195,9 +210,9 @@ fun PlayerScreen(
                 CircularProgressIndicator(color = HarborColors.FocusCyan)
                 Text(
                     text = if (uiState.isRecoveringExpiry) {
-                        "Refreshing expired stream URL..."
+                        "Refreshing stream link..."
                     } else {
-                        "Buffering stream..."
+                        "Buffering..."
                     },
                     style = MaterialTheme.typography.titleMedium,
                     color = HarborColors.TextPrimary
@@ -253,17 +268,22 @@ fun PlayerScreen(
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(HarborColors.Scrim.copy(alpha = 0.55f))
-                    .padding(32.dp)
-            ) {
-                // Top metadata bar
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Cinema top gradient scrim fading transparently into video
                 Row(
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .fillMaxWidth(),
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xE6060911),
+                                    Color(0x99060911),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                        .padding(horizontal = 36.dp, vertical = 28.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -274,11 +294,12 @@ fun PlayerScreen(
                         Text(
                             text = uiState.title,
                             style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
                             color = HarborColors.TextPrimary
                         )
                         val activeCand = uiState.activeCandidate
                         val subLabel = buildString {
-                            append(uiState.sourceId)
+                            append(friendlyPlayerSource(uiState.sourceId))
                             if (activeCand != null) {
                                 append(" • ${activeCand.streamType.name}")
                                 activeCand.qualityLabel?.let { append(" • $it") }
@@ -315,9 +336,9 @@ fun PlayerScreen(
                             }
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(RoundedCornerShape(8.dp))
                                     .background(tierColor.copy(alpha = 0.22f))
-                                    .border(1.dp, tierColor, RoundedCornerShape(6.dp))
+                                    .border(1.dp, tierColor, RoundedCornerShape(8.dp))
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
@@ -331,9 +352,9 @@ fun PlayerScreen(
                         if (uiState.isPrivateSession) {
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(RoundedCornerShape(8.dp))
                                     .background(HarborColors.PrivatePurple.copy(alpha = 0.25f))
-                                    .border(1.dp, HarborColors.PrivatePurple, RoundedCornerShape(6.dp))
+                                    .border(1.dp, HarborColors.PrivatePurple, RoundedCornerShape(8.dp))
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
@@ -354,16 +375,22 @@ fun PlayerScreen(
                     }
                 }
 
-                // Bottom controls
+                // Cinema bottom gradient scrim fading transparently into video
                 Column(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(HarborColors.Surface.copy(alpha = 0.92f))
-                        .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(16.dp))
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color(0xA6060911),
+                                    Color(0xEE060911)
+                                )
+                            )
+                        )
+                        .padding(horizontal = 36.dp, vertical = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     val upNextTitle = uiState.nextItemTitle
                     if (!upNextTitle.isNullOrBlank()) {
@@ -388,7 +415,7 @@ fun PlayerScreen(
                             .clip(RoundedCornerShape(8.dp))
                             .border(
                                 width = if (timelineFocused) 2.dp else 0.dp,
-                                color = if (timelineFocused) HarborColors.FocusCyan else HarborColors.Surface,
+                                color = if (timelineFocused) HarborColors.FocusCyan else Color.Transparent,
                                 shape = RoundedCornerShape(8.dp)
                             )
                             .onFocusChanged { timelineFocused = it.isFocused }
@@ -412,17 +439,17 @@ fun PlayerScreen(
                                 }
                                 false
                             }
-                            .padding(8.dp),
+                            .padding(horizontal = 4.dp, vertical = 6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         LinearProgressIndicator(
                             progress = { progressFraction },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(8.dp)
+                                .height(if (timelineFocused) 10.dp else 7.dp)
                                 .clip(RoundedCornerShape(4.dp)),
                             color = if (uiState.isSeekable) HarborColors.FocusCyan else HarborColors.DangerRed,
-                            trackColor = HarborColors.SurfaceCard
+                            trackColor = Color(0x55FFFFFF)
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -430,16 +457,16 @@ fun PlayerScreen(
                         ) {
                             Text(
                                 text = if (uiState.isLive) "LIVE" else formatDurationMs(uiState.currentPositionMs),
-                                style = MaterialTheme.typography.labelMedium,
+                                style = MaterialTheme.typography.labelLarge,
                                 color = HarborColors.TextPrimary
                             )
                             Text(
                                 text = if (uiState.isSeekable) {
-                                    if (timelineFocused) "Use Left / Right to seek 10s" else formatDurationMs(uiState.durationMs)
+                                    if (timelineFocused) "Left / Right to seek 10s" else formatDurationMs(uiState.durationMs)
                                 } else {
                                     "Stream not seekable"
                                 },
-                                style = MaterialTheme.typography.labelMedium,
+                                style = MaterialTheme.typography.labelLarge,
                                 color = HarborColors.TextSecondary
                             )
                         }
@@ -529,15 +556,16 @@ fun PlayerScreen(
                     }
                 }
 
-                // Side overlay panels
+                // Side overlay drawers
                 if (activePanel != PlayerPanel.NONE) {
                     Column(
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
+                            .padding(end = 32.dp)
                             .width(380.dp)
                             .fillMaxHeight(0.75f)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(HarborColors.Surface)
+                            .background(HarborColors.Surface.copy(alpha = 0.96f))
                             .border(2.dp, HarborColors.FocusCyan, RoundedCornerShape(16.dp))
                             .padding(20.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -549,9 +577,9 @@ fun PlayerScreen(
                         ) {
                             Text(
                                 text = if (activePanel == PlayerPanel.QUALITY) {
-                                    "Stream Quality Candidates"
+                                    "Stream Quality"
                                 } else {
-                                    "Audio & Subtitle Tracks"
+                                    "Audio & Subtitles"
                                 },
                                 style = MaterialTheme.typography.titleLarge,
                                 color = HarborColors.TextPrimary
@@ -585,7 +613,7 @@ fun PlayerScreen(
                                                     if (candidate.resolutionHeight != null) {
                                                         append(" (${candidate.resolutionHeight}p)")
                                                     }
-                                                    if (isCurrent) append(" [Active]")
+                                                    if (isCurrent) append(" • Active")
                                                 },
                                                 style = MaterialTheme.typography.titleMedium,
                                                 color = if (isCurrent) HarborColors.FocusCyan else HarborColors.TextPrimary
@@ -626,7 +654,7 @@ fun PlayerScreen(
                                             unfocusedBorderColor = if (track.isSelected) HarborColors.FocusCyan else HarborColors.BorderSubtle
                                         ) {
                                             Text(
-                                                text = "${track.label}${if (track.isSelected) " [Selected]" else ""}",
+                                                text = "${track.label}${if (track.isSelected) " • Selected" else ""}",
                                                 style = MaterialTheme.typography.titleMedium,
                                                 color = if (track.isSelected) HarborColors.FocusCyan else HarborColors.TextPrimary
                                             )
@@ -649,7 +677,7 @@ fun PlayerScreen(
                                         unfocusedBorderColor = if (uiState.subtitlesDisabled) HarborColors.FocusCyan else HarborColors.BorderSubtle
                                     ) {
                                         Text(
-                                            text = "Subtitles Off${if (uiState.subtitlesDisabled) " [Selected]" else ""}",
+                                            text = "Subtitles Off${if (uiState.subtitlesDisabled) " • Selected" else ""}",
                                             style = MaterialTheme.typography.titleMedium,
                                             color = if (uiState.subtitlesDisabled) HarborColors.FocusCyan else HarborColors.TextPrimary
                                         )
@@ -662,7 +690,7 @@ fun PlayerScreen(
                                         unfocusedBorderColor = if (selected) HarborColors.FocusCyan else HarborColors.BorderSubtle
                                     ) {
                                         Text(
-                                            text = "${track.label}${if (selected) " [Selected]" else ""}",
+                                            text = "${track.label}${if (selected) " • Selected" else ""}",
                                             style = MaterialTheme.typography.titleMedium,
                                             color = if (selected) HarborColors.FocusCyan else HarborColors.TextPrimary
                                         )
@@ -674,5 +702,18 @@ fun PlayerScreen(
                 }
             }
         }
+    }
+}
+
+private fun friendlyPlayerSource(rawSourceId: String): String {
+    val cleaned = rawSourceId.trim()
+        .replace(Regex("""(?i)-(?:api|html|v\d+)$"""), "")
+        .replace(Regex("""(?i)-(?:api|html|v\d+)$"""), "")
+        .replace('-', ' ')
+        .replace('_', ' ')
+        .trim()
+    if (cleaned.isEmpty()) return rawSourceId
+    return cleaned.split(Regex("""\s+""")).joinToString(" ") { word ->
+        word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
     }
 }

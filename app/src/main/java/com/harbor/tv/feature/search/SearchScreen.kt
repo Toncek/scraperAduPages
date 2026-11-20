@@ -1,5 +1,11 @@
 package com.harbor.tv.feature.search
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,12 +16,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -30,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.harbor.tv.core.model.CatalogItem
 import com.harbor.tv.core.model.CatalogSortMode
@@ -62,9 +70,26 @@ fun SearchScreen(
     modifier: Modifier = Modifier
 ) {
     var showRemoteKeys by remember { mutableStateOf(false) }
+    var voiceNotice by remember { mutableStateOf<String?>(null) }
     val restoreRequesters = remember { mutableMapOf<String, FocusRequester>() }
     fun requesterFor(key: String): FocusRequester =
         restoreRequesters.getOrPut(key) { FocusRequester() }
+
+    val voiceSearchLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { activityResult ->
+        if (activityResult.resultCode == Activity.RESULT_OK) {
+            val spoken = activityResult.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.trim()
+            if (!spoken.isNullOrBlank()) {
+                voiceNotice = null
+                onQueryChange(spoken)
+                onSearch(spoken)
+            }
+        }
+    }
 
     LaunchedEffect(lastFocusedKey, results) {
         val target = lastFocusedKey ?: return@LaunchedEffect
@@ -74,7 +99,7 @@ fun SearchScreen(
     }
 
     val quickSuggestions = remember {
-        listOf("4k", "2160p", "1080p", "60fps", "amateur", "hd")
+        listOf("4K", "2160p", "1080p", "60fps", "HD")
     }
 
     Column(
@@ -85,7 +110,7 @@ fun SearchScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(
-            text = "Multi-Source Search",
+            text = "Search",
             style = MaterialTheme.typography.headlineMedium,
             color = HarborColors.TextPrimary
         )
@@ -98,8 +123,12 @@ fun SearchScreen(
             OutlinedTextField(
                 value = query,
                 onValueChange = onQueryChange,
-                label = { Text("Search across enabled sources") },
+                label = { Text("Search videos, tags, or creators") },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(
+                    onSearch = { onSearch(null) }
+                ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = HarborColors.TextPrimary,
                     unfocusedTextColor = HarborColors.TextPrimary,
@@ -114,15 +143,45 @@ fun SearchScreen(
                 onClick = { onSearch(null) }
             )
             TvActionButton(
+                label = "Voice Search",
+                tone = TvButtonTone.ACCENT,
+                onClick = {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(
+                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                        )
+                        putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to search videos")
+                    }
+                    try {
+                        voiceNotice = null
+                        voiceSearchLauncher.launch(intent)
+                    } catch (_: ActivityNotFoundException) {
+                        voiceNotice = "Voice search is not available on this TV device. Use the on-screen keyboard or Remote Keypad."
+                    } catch (_: Exception) {
+                        voiceNotice = "Unable to start voice search on this device."
+                    }
+                }
+            )
+            TvActionButton(
                 label = if (showRemoteKeys) "Hide Keypad" else "Remote Keypad",
                 onClick = { showRemoteKeys = !showRemoteKeys }
             )
             TvActionButton(
                 label = "Clear",
                 onClick = {
+                    voiceNotice = null
                     onQueryChange("")
                     onSearch("")
                 }
+            )
+        }
+
+        voiceNotice?.let { notice ->
+            TvStatusBanner(
+                title = "Voice Search Unavailable",
+                body = notice,
+                accentColor = HarborColors.WarningAmber
             )
         }
 
@@ -151,11 +210,11 @@ fun SearchScreen(
             }
         }
 
-        // Quick tag suggestions
+        // Quick search suggestions
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(quickSuggestions) { suggestion ->
                 TvTagChip(
-                    label = "#$suggestion",
+                    label = suggestion,
                     selected = query.equals(suggestion, ignoreCase = true),
                     onClick = {
                         onQueryChange(suggestion)
@@ -165,7 +224,7 @@ fun SearchScreen(
             }
         }
 
-        // Source filter chips + 4K toggle + Sort chips
+        // Friendly site filters + 4K toggle + Sort chips
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 TvTagChip(
@@ -176,35 +235,35 @@ fun SearchScreen(
             }
             item {
                 TvTagChip(
-                    label = "Sort: Default",
+                    label = "Default Order",
                     selected = sortMode == CatalogSortMode.DEFAULT,
                     onClick = { onSelectSortMode(CatalogSortMode.DEFAULT) }
                 )
             }
             item {
                 TvTagChip(
-                    label = "Sort: 4K First",
+                    label = "4K First",
                     selected = sortMode == CatalogSortMode.QUALITY_FIRST,
                     onClick = { onSelectSortMode(CatalogSortMode.QUALITY_FIRST) }
                 )
             }
             item {
                 TvTagChip(
-                    label = "Sort: Longest",
+                    label = "Longest",
                     selected = sortMode == CatalogSortMode.LONGEST_FIRST,
                     onClick = { onSelectSortMode(CatalogSortMode.LONGEST_FIRST) }
                 )
             }
             item {
                 TvTagChip(
-                    label = "All Enabled Sources",
+                    label = "All Sites",
                     selected = selectedSourceFilterId == null,
                     onClick = { onSelectSourceFilter(null) }
                 )
             }
             items(enabledSourceIds) { sourceId ->
                 TvTagChip(
-                    label = sourceId,
+                    label = friendlySiteName(sourceId),
                     selected = selectedSourceFilterId == sourceId,
                     onClick = { onSelectSourceFilter(sourceId) }
                 )
@@ -213,7 +272,7 @@ fun SearchScreen(
 
         sourceErrors.forEach { (sourceId, err) ->
             TvStatusBanner(
-                title = "Source '$sourceId' Search Error",
+                title = "${friendlySiteName(sourceId)} Unavailable",
                 body = err,
                 accentColor = HarborColors.WarningAmber
             )
@@ -226,7 +285,7 @@ fun SearchScreen(
             ) {
                 CircularProgressIndicator(color = HarborColors.FocusCyan)
                 Text(
-                    text = "Searching & applying preferences...",
+                    text = "Searching enabled sites...",
                     style = MaterialTheme.typography.bodyMedium,
                     color = HarborColors.TextSecondary
                 )
@@ -245,8 +304,8 @@ fun SearchScreen(
 
         if (!isLoading && query.isNotBlank() && displayedResults.isEmpty()) {
             TvStatusBanner(
-                title = "No Eligible Results",
-                body = "No items matched '$query' under your active profile's PreferenceFilterEngine rules.",
+                title = "No Matching Videos",
+                body = "No videos matched \"$query\". Try a different keyword or adjust your filters.",
                 accentColor = HarborColors.FocusCyan
             )
         }
@@ -268,5 +327,18 @@ fun SearchScreen(
                 )
             }
         }
+    }
+}
+
+private fun friendlySiteName(rawSourceId: String): String {
+    val cleaned = rawSourceId.trim()
+        .replace(Regex("""(?i)-(?:api|html|v\d+)$"""), "")
+        .replace(Regex("""(?i)-(?:api|html|v\d+)$"""), "")
+        .replace('-', ' ')
+        .replace('_', ' ')
+        .trim()
+    if (cleaned.isEmpty()) return rawSourceId
+    return cleaned.split(Regex("""\s+""")).joinToString(" ") { word ->
+        word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
     }
 }

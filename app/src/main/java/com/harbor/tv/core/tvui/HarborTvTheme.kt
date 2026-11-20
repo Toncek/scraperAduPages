@@ -10,14 +10,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 object HarborColors {
-    val Background = Color(0xFF0B0F19)
-    val Surface = Color(0xFF111827)
-    val SurfaceCard = Color(0xFF1E293B)
-    val SurfaceCardFocused = Color(0xFF273449)
-    val SurfaceElevated = Color(0xFF162032)
+    val Background = Color(0xFF070B14)
+    val Surface = Color(0xFF0E1422)
+    val SurfaceCard = Color(0xFF161F31)
+    val SurfaceCardFocused = Color(0xFF1F2D47)
+    val SurfaceElevated = Color(0xFF121B2E)
     val SurfaceGlass = Color(0xE60F172A)
 
     val FocusCyan = Color(0xFF38BDF8)
+    val FocusRing = Color(0xFFE0F2FE)
     val FocusGlow = Color(0x4438BDF8)
     val AccentTeal = Color(0xFF2DD4BF)
     val Gold4K = Color(0xFFF59E0B)

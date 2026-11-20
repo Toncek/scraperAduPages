@@ -1147,6 +1147,11 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun openSourceInCategories(sourceId: String) {
+        navigateTo(HarborScreen.CATEGORIES)
+        selectCategorySource(sourceId)
+    }
+
     fun openQuickCategory(category: CategoryItem) {
         navigateTo(HarborScreen.CATEGORIES)
         viewModelScope.launch {
@@ -1294,6 +1299,14 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
 
     fun updateSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
+    }
+
+    fun searchByTag(tag: String) {
+        val cleanTag = tag.trim()
+        if (cleanTag.isEmpty()) return
+        _uiState.update { it.copy(searchQuery = cleanTag) }
+        navigateTo(HarborScreen.SEARCH)
+        executeSearch(cleanTag)
     }
 
     fun setSearchSourceFilter(sourceId: String?) {

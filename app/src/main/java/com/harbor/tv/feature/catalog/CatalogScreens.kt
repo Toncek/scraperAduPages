@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -57,6 +58,7 @@ import com.harbor.tv.core.tvui.TvVideoCard
 import com.harbor.tv.core.tvui.formatDuration
 import com.harbor.tv.core.tvui.formatDurationMs
 import com.harbor.tv.core.tvui.formatTagForDisplay
+import com.harbor.tv.core.tvui.friendlySourceName
 import com.harbor.tv.core.tvui.resolveQualityBadge
 import com.harbor.tv.domain.catalog.CatalogRepository
 
@@ -85,6 +87,8 @@ fun HomeScreen(
     onToggleOnly4kFilter: () -> Unit = {},
     onQuickBrowse4k: () -> Unit = {},
     onOpenVideo: (CatalogItem) -> Unit,
+    onPlayVideo: (CatalogItem) -> Unit = onOpenVideo,
+    onOpenSourceCategories: (String) -> Unit = {},
     onOpenCategory: (CategoryItem) -> Unit,
     onRefresh: () -> Unit,
     onOpenSources: () -> Unit,
@@ -108,7 +112,7 @@ fun HomeScreen(
             .fillMaxSize()
             .background(HarborColors.Background)
             .padding(horizontal = 28.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
         item {
             Row(
@@ -116,25 +120,49 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     Text(
-                        text = "Home Catalog",
+                        text = "Discover",
                         style = MaterialTheme.typography.headlineMedium,
                         color = HarborColors.TextPrimary
                     )
-                    Text(
-                        text = buildString {
-                            append(if (isPrivateSession) "Private Session Active" else "Profile: ${activeProfile.name}")
-                            append(" • Metadata: ${activeProfile.unknownMetadataMode.name}")
-                            append(" • ${if (offlineFixtureMode) "Offline Fixture Mode" else "Live Network Mode"}")
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isPrivateSession) HarborColors.PrivatePurple else HarborColors.TextSecondary
-                    )
+                    if (isPrivateSession) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(HarborColors.PrivatePurple.copy(alpha = 0.22f))
+                                .border(1.dp, HarborColors.PrivatePurple, RoundedCornerShape(50))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "Private",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = HarborColors.PrivatePurple,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    if (offlineFixtureMode) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(HarborColors.AccentTeal.copy(alpha = 0.16f))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "Demo",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = HarborColors.AccentTeal
+                            )
+                        }
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     TvTagChip(
-                        label = if (only4kFilter) "4K UHD Only: ON" else "4K UHD Only",
+                        label = if (only4kFilter) "★ 4K Only: ON" else "★ 4K Only",
                         selected = only4kFilter,
                         onClick = onToggleOnly4kFilter
                     )
@@ -147,29 +175,14 @@ fun HomeScreen(
                         label = "Refresh",
                         onClick = onRefresh
                     )
-                    TvActionButton(
-                        label = "Manage Sources",
-                        tone = TvButtonTone.PRIMARY,
-                        onClick = onOpenSources
-                    )
                 }
-            }
-        }
-
-        if (isPrivateSession) {
-            item {
-                TvStatusBanner(
-                    title = "Private Session Active",
-                    body = "Watch history, search history, resume positions, and disk media cache are not being persisted.",
-                    accentColor = HarborColors.PrivatePurple
-                )
             }
         }
 
         if (!errorMessage.isNullOrBlank()) {
             item {
                 TvStatusBanner(
-                    title = "Catalog Notice",
+                    title = "Notice",
                     body = errorMessage,
                     accentColor = HarborColors.DangerRed
                 )
@@ -184,7 +197,7 @@ fun HomeScreen(
                 ) {
                     CircularProgressIndicator(color = HarborColors.FocusCyan)
                     Text(
-                        text = "Loading & filtering catalog...",
+                        text = "Loading videos...",
                         style = MaterialTheme.typography.bodyLarge,
                         color = HarborColors.TextSecondary
                     )
@@ -195,8 +208,8 @@ fun HomeScreen(
         if (enabledSourceIds.isEmpty()) {
             item {
                 TvStatusBanner(
-                    title = "No Sources Enabled Yet",
-                    body = "Harbor ships with no enabled sources by default. Import and approve a declarative YAML/JSON definition—or load the bundled Example Video Library fixture source—to browse.",
+                    title = "No Sources Enabled",
+                    body = "Enable bundled sources or import a declarative definition in Sources to start browsing.",
                     accentColor = HarborColors.WarningAmber
                 )
             }
@@ -209,12 +222,12 @@ fun HomeScreen(
                         onClick = onEnableAllBundledSources
                     )
                     TvActionButton(
-                        label = "Load Example Library for Approval",
+                        label = "Load Example Library",
                         tone = TvButtonTone.ACCENT,
                         onClick = onQuickLoadDemo
                     )
                     TvActionButton(
-                        label = "Browse Sources & 27-Platform Reference",
+                        label = "Open Sources",
                         onClick = onOpenSources
                     )
                 }
@@ -235,29 +248,74 @@ fun HomeScreen(
             item(key = "featured_spotlight") {
                 FeaturedCinemaSpotlight(
                     item = spotlightItem,
-                    focusRequester = requesterFor("home_spotlight"),
+                    playFocusRequester = requesterFor("home_spotlight"),
                     onFocused = { onFocusKeyChanged("home_spotlight") },
-                    onOpenAndPlay = { onOpenVideo(spotlightItem) }
+                    onPlayNow = { onPlayVideo(spotlightItem) },
+                    onOpenDetails = { onOpenVideo(spotlightItem) }
                 )
             }
         }
 
-        if (quickCategories.isNotEmpty()) {
-            item {
+        // Quick Sites row
+        if (enabledSourceIds.isNotEmpty()) {
+            item(key = "quick_sites") {
+                val orderedKnown = listOf(
+                    "eporner-api-v2",
+                    "porntrex-html",
+                    "xhamster-html",
+                    "pornhub-webmaster",
+                    "xvideos-html",
+                    "xnxx-html",
+                    "redtube-api"
+                )
+                val siteChips = (orderedKnown.filter { it in enabledSourceIds } +
+                    enabledSourceIds.filter { it !in orderedKnown }).distinct()
+
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    item(key = "site_all") {
+                        TvTagChip(
+                            label = "All Sites",
+                            selected = true,
+                            onClick = { siteChips.firstOrNull()?.let(onOpenSourceCategories) }
+                        )
+                    }
+                    items(siteChips, key = { "site_$it" }) { srcId ->
+                        TvTagChip(
+                            label = friendlySourceName(srcId),
+                            onClick = { onOpenSourceCategories(srcId) }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Aggregated 4K Ultra HD Picks row
+        val uhdPicks = rowsBySource.values
+            .flatten()
+            .filter(::is4kCatalogItem)
+            .distinctBy { it.compositeId }
+            .take(12)
+        if (uhdPicks.isNotEmpty()) {
+            item(key = "row_4k_picks") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Quick Categories",
+                        text = "4K Ultra HD Picks",
                         style = MaterialTheme.typography.titleLarge,
-                        color = HarborColors.TextPrimary
+                        color = HarborColors.Gold4K,
+                        fontWeight = FontWeight.Bold
                     )
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(quickCategories, key = { "${it.sourceId}::${it.id}" }) { cat ->
-                            val key = "cat:${cat.sourceId}:${cat.id}"
-                            TvTagChip(
-                                label = "${cat.title} (${cat.sourceId})",
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        items(uhdPicks, key = { "4k_${it.compositeId}" }) { item ->
+                            val key = "4k:${item.compositeId}"
+                            TvVideoCard(
+                                item = item,
                                 focusRequester = requesterFor(key),
-                                onFocused = { onFocusKeyChanged(key) },
-                                onClick = { onOpenCategory(cat) }
+                                onFocused = {
+                                    onFocusKeyChanged(key)
+                                    onFeaturedItemFocused(item)
+                                },
+                                showSourceBadge = true,
+                                onClick = { onOpenVideo(item) }
                             )
                         }
                     }
@@ -269,18 +327,29 @@ fun HomeScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Recently Watched",
+                        text = "Continue Watching",
                         style = MaterialTheme.typography.titleLarge,
                         color = HarborColors.AccentTeal
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         items(watchHistory, key = { "hist:${it.item.compositeId}" }) { record ->
                             val key = "hist:${record.item.compositeId}"
+                            val totalMs = (record.item.durationSeconds ?: 0) * 1000L
+                            val progress = if (totalMs > 0L) {
+                                (record.resumePositionMs.toFloat() / totalMs.toFloat()).coerceIn(0.03f, 1f)
+                            } else {
+                                0.25f
+                            }
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 TvVideoCard(
                                     item = record.item,
                                     focusRequester = requesterFor(key),
-                                    onFocused = { onFocusKeyChanged(key) },
+                                    onFocused = {
+                                        onFocusKeyChanged(key)
+                                        onFeaturedItemFocused(record.item)
+                                    },
+                                    showSourceBadge = true,
+                                    progressFraction = progress,
                                     onClick = { onOpenVideo(record.item) }
                                 )
                                 Text(
@@ -299,7 +368,7 @@ fun HomeScreen(
             item(key = "row_$sourceId") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Source: $sourceId (${items.size} eligible)",
+                        text = friendlySourceName(sourceId),
                         style = MaterialTheme.typography.titleLarge,
                         color = HarborColors.TextPrimary
                     )
@@ -313,7 +382,64 @@ fun HomeScreen(
                                     onFocusKeyChanged(key)
                                     onFeaturedItemFocused(item)
                                 },
+                                showSourceBadge = false,
                                 onClick = { onOpenVideo(item) }
+                            )
+                        }
+                        item(key = "see_all_$sourceId") {
+                            TvFocusableCard(
+                                onClick = { onOpenSourceCategories(sourceId) },
+                                modifier = Modifier
+                                    .width(168.dp)
+                                    .height(216.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                containerColor = HarborColors.SurfaceElevated,
+                                focusedScale = 1.04f
+                            ) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "See All ->",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = HarborColors.FocusCyan,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = friendlySourceName(sourceId),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = HarborColors.TextSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (quickCategories.isNotEmpty()) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Quick Categories",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = HarborColors.TextPrimary
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(quickCategories, key = { "${it.sourceId}::${it.id}" }) { cat ->
+                            val key = "cat:${cat.sourceId}:${cat.id}"
+                            TvTagChip(
+                                label = cat.title,
+                                focusRequester = requesterFor(key),
+                                onFocused = { onFocusKeyChanged(key) },
+                                onClick = { onOpenCategory(cat) }
                             )
                         }
                     }
@@ -324,11 +450,11 @@ fun HomeScreen(
         if (enabledSourceIds.isNotEmpty() && displayedRows.isEmpty() && !isLoading) {
             item {
                 TvStatusBanner(
-                    title = if (only4kFilter) "No 4K Items in Current Rows" else "No Eligible Videos",
+                    title = if (only4kFilter) "No 4K Videos in Current Rows" else "No Videos Available",
                     body = if (only4kFilter) {
-                        "Toggle '4K UHD Only' off or press 'Browse 4K' to search across all enabled sources."
+                        "Turn off '4K Only' or press 'Browse 4K' to search all enabled sources."
                     } else {
-                        "Your enabled sources returned no videos matching the active profile's preferences or Strict metadata rules."
+                        "No videos matched your active profile filters."
                     },
                     accentColor = HarborColors.WarningAmber
                 )
@@ -340,9 +466,10 @@ fun HomeScreen(
 @Composable
 private fun FeaturedCinemaSpotlight(
     item: CatalogItem,
-    focusRequester: FocusRequester,
+    playFocusRequester: FocusRequester,
     onFocused: () -> Unit,
-    onOpenAndPlay: () -> Unit
+    onPlayNow: () -> Unit,
+    onOpenDetails: () -> Unit
 ) {
     val thumbUrl = item.thumbnailReferences.firstOrNull()?.takeIf { it.isNotBlank() }
     val qualityBadge = resolveQualityBadge(
@@ -351,143 +478,153 @@ private fun FeaturedCinemaSpotlight(
         tags = item.canonicalTags
     )
 
-    TvFocusableCard(
-        onClick = onOpenAndPlay,
-        modifier = Modifier.fillMaxWidth(),
-        focusRequester = focusRequester,
-        onFocused = onFocused,
-        containerColor = HarborColors.SurfaceElevated,
-        focusedScale = 1.015f,
-        contentPadding = 16.dp
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(244.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(HarborColors.SurfaceElevated)
+            .border(1.dp, HarborColors.BorderSubtle, RoundedCornerShape(18.dp))
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(22.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // Right-side full-bleed artwork fading smoothly into left pane
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .fillMaxWidth(0.58f)
         ) {
+            if (thumbUrl != null) {
+                val context = LocalContext.current
+                val req = remember(thumbUrl) {
+                    ImageRequest.Builder(context)
+                        .data(thumbUrl)
+                        .size(Size(640, 360))
+                        .precision(Precision.INEXACT)
+                        .allowRgb565(true)
+                        .crossfade(false)
+                        .build()
+                }
+                AsyncImage(
+                    model = req,
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             Box(
                 modifier = Modifier
-                    .width(340.dp)
-                    .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(HarborColors.Background)
-            ) {
-                if (thumbUrl != null) {
-                    val context = LocalContext.current
-                    val req = remember(thumbUrl) {
-                        ImageRequest.Builder(context)
-                            .data(thumbUrl)
-                            .size(Size(640, 360))
-                            .precision(Precision.INEXACT)
-                            .allowRgb565(true)
-                            .crossfade(false)
-                            .build()
-                    }
-                    AsyncImage(
-                        model = req,
-                        contentDescription = item.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color(0x99060911))
+                    .fillMaxSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                HarborColors.SurfaceElevated,
+                                HarborColors.SurfaceElevated.copy(alpha = 0.65f),
+                                Color.Transparent
                             )
                         )
-                )
+                    )
+            )
+        }
+
+        // Left metadata + CTA pane
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxWidth(0.58f)
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(HarborColors.FocusCyan.copy(alpha = 0.18f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = friendlySourceName(item.sourceId),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = HarborColors.FocusCyan,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 if (qualityBadge != null) {
                     val (qLabel, qColor) = qualityBadge
                     Box(
                         modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .background(qColor)
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
                         Text(
                             text = if (qLabel == "4K") "4K UHD" else qLabel,
-                            style = MaterialTheme.typography.labelLarge,
+                            style = MaterialTheme.typography.labelMedium,
                             color = HarborColors.Background,
                             fontWeight = FontWeight.ExtraBold
                         )
                     }
                 }
-            }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "SPOTLIGHT",
+                when (item.liveStatus) {
+                    LiveStatus.LIVE -> Text(
+                        text = "LIVE",
                         style = MaterialTheme.typography.labelMedium,
-                        color = HarborColors.Gold4K,
+                        color = HarborColors.DangerRed,
                         fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        text = "• ${item.sourceId}",
+                    LiveStatus.UPCOMING -> Text(
+                        text = "UPCOMING",
                         style = MaterialTheme.typography.labelMedium,
-                        color = HarborColors.FocusCyan
+                        color = HarborColors.WarningAmber
                     )
-                    when (item.liveStatus) {
-                        LiveStatus.LIVE -> Text(
-                            text = "• LIVE",
+                    LiveStatus.ON_DEMAND -> item.durationSeconds?.let {
+                        Text(
+                            text = formatDuration(it),
                             style = MaterialTheme.typography.labelMedium,
-                            color = HarborColors.DangerRed,
-                            fontWeight = FontWeight.Bold
+                            color = HarborColors.AccentTeal
                         )
-                        LiveStatus.UPCOMING -> Text(
-                            text = "• UPCOMING",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = HarborColors.WarningAmber
-                        )
-                        LiveStatus.ON_DEMAND -> item.durationSeconds?.let {
-                            Text(
-                                text = "• ${formatDuration(it)}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = HarborColors.AccentTeal
-                            )
-                        }
                     }
                 }
+            }
 
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.headlineSmall,
+                color = HarborColors.TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            val tagsPreview = (item.canonicalTags.ifEmpty { item.sourceTags })
+                .map(::formatTagForDisplay)
+                .filter { it.isNotBlank() }
+                .distinct()
+                .take(4)
+                .joinToString(" • ")
+            if (tagsPreview.isNotBlank()) {
                 Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = HarborColors.TextPrimary,
-                    maxLines = 2,
+                    text = tagsPreview,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = HarborColors.TextSecondary,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
 
-                val tagsPreview = (item.canonicalTags.ifEmpty { item.sourceTags })
-                    .map(::formatTagForDisplay)
-                    .filter { it.isNotBlank() }
-                    .distinct()
-                    .take(5)
-                    .joinToString(" • ")
-                if (tagsPreview.isNotBlank()) {
-                    Text(
-                        text = tagsPreview,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = HarborColors.TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Text(
-                    text = "Open & Play  ->",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = HarborColors.FocusCyan
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TvActionButton(
+                    label = "Play Now",
+                    tone = TvButtonTone.PRIMARY,
+                    focusRequester = playFocusRequester,
+                    onFocused = onFocused,
+                    onClick = onPlayNow
+                )
+                TvActionButton(
+                    label = "Details",
+                    tone = TvButtonTone.SECONDARY,
+                    onClick = onOpenDetails
                 )
             }
         }
@@ -542,13 +679,13 @@ fun CategoriesScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Categories",
+                text = "Browse Categories",
                 style = MaterialTheme.typography.headlineMedium,
                 color = HarborColors.TextPrimary
             )
             if (selectedCategory != null) {
                 Text(
-                    text = "${selectedCategory.title} • Pages loaded: $pagesLoaded",
+                    text = "${friendlySourceName(selectedCategory.sourceId)} • ${selectedCategory.title}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = HarborColors.TextSecondary
                 )
@@ -601,7 +738,7 @@ fun CategoriesScreen(
             }
             items(enabledSourceIds) { sourceId ->
                 TvTagChip(
-                    label = sourceId,
+                    label = friendlySourceName(sourceId),
                     selected = sourceId == selectedSourceId,
                     onClick = { onSelectSource(sourceId) }
                 )
@@ -653,10 +790,10 @@ fun CategoriesScreen(
         val displayedItems = if (only4kFilter) items.filter(::is4kCatalogItem) else items
 
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 250.dp),
+            columns = GridCells.Adaptive(minSize = 264.dp),
             contentPadding = PaddingValues(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.weight(1f)
         ) {
             items(displayedItems, key = { it.compositeId }) { item ->
@@ -665,6 +802,7 @@ fun CategoriesScreen(
                     item = item,
                     focusRequester = requesterFor(key),
                     onFocused = { onFocusKeyChanged(key) },
+                    showSourceBadge = false,
                     onClick = { onOpenVideo(item) }
                 )
             }
@@ -677,12 +815,12 @@ fun CategoriesScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Opaque pagination cursor ready",
+                    text = "Page $pagesLoaded loaded",
                     style = MaterialTheme.typography.labelMedium,
                     color = HarborColors.TextSecondary
                 )
                 TvActionButton(
-                    label = "Load Next Page",
+                    label = "Load More Videos",
                     tone = TvButtonTone.PRIMARY,
                     enabled = !isLoading,
                     onClick = onLoadNextPage
@@ -725,20 +863,20 @@ fun FavoritesScreen(
             color = HarborColors.TextPrimary
         )
         Text(
-            text = "Filtered dynamically by your active profile's PreferenceFilterEngine rules (exclusions and Strict mode apply here too).",
+            text = "Saved videos for this profile, filtered automatically by your preferences.",
             style = MaterialTheme.typography.bodyMedium,
             color = HarborColors.TextSecondary
         )
 
         if (favorites.isEmpty()) {
             TvStatusBanner(
-                title = "No Eligible Favorites",
-                body = "Add favorites from Video Details. Any favorite matching an excluded tag, disabled source, or Strict metadata filter is hidden automatically.",
+                title = "No Saved Favorites Yet",
+                body = "Open any video and choose Add to Favorites to save it here.",
                 accentColor = HarborColors.FocusCyan
             )
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 260.dp),
+                columns = GridCells.Adaptive(minSize = 264.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize()
@@ -753,10 +891,10 @@ fun FavoritesScreen(
                             onClick = { onOpenVideo(item) }
                         )
                         TvActionButton(
-                            label = "Remove Favorite",
+                            label = "Remove",
                             tone = TvButtonTone.DANGER,
                             onClick = { onRemoveFavorite(item) },
-                            modifier = Modifier.width(268.dp)
+                            modifier = Modifier.width(276.dp)
                         )
                     }
                 }

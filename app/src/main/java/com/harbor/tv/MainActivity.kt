@@ -225,7 +225,9 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         onToggleOnly4kFilter = { viewModel.toggleOnly4kFilter() },
                         onQuickBrowse4k = { viewModel.quickSearch4k() },
                         onOpenVideo = { item -> viewModel.openVideoDetails(item) },
+                        onPlayVideo = { item -> viewModel.playVideo(item) },
                         onOpenCategory = { cat -> viewModel.openQuickCategory(cat) },
+                        onOpenSourceCategories = { sourceId -> viewModel.openSourceInCategories(sourceId) },
                         onRefresh = { viewModel.refreshHome() },
                         onOpenSources = { viewModel.navigateToSidebarDestination(HarborNavDestination.SOURCES) },
                         onQuickLoadDemo = { viewModel.quickImportAndEnableExampleDemo() },
@@ -296,6 +298,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         onToggleFavorite = {
                             state.selectedVideo?.let { viewModel.toggleFavorite(it) }
                         },
+                        onSearchTag = { tag -> viewModel.searchByTag(tag) },
                         onRefreshDetails = { viewModel.refreshSelectedVideoDetails() },
                         onBack = { viewModel.navigateBack() }
                     )
