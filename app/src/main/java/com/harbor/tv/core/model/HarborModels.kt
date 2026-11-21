@@ -1,5 +1,7 @@
 package com.harbor.tv.core.model
 
+import androidx.compose.runtime.Immutable
+
 enum class DefinitionLifecycleState {
     IMPORTED,
     VALIDATED,
@@ -81,6 +83,7 @@ data class TagProvenance(
     val confidence: TagConfidence
 )
 
+@Immutable
 data class CategoryItem(
     val sourceId: String,
     val id: String,
@@ -88,6 +91,7 @@ data class CategoryItem(
     val url: String
 )
 
+@Immutable
 data class CatalogItem(
     val sourceId: String,
     val sourceItemId: String,
@@ -118,6 +122,7 @@ data class PaginatedListingResult(
     val totalRejected: Int = 0
 )
 
+@Immutable
 data class PlaybackCandidate(
     val url: String,
     val mimeType: String? = null,
@@ -130,6 +135,7 @@ data class PlaybackCandidate(
     val headers: Map<String, String> = emptyMap()
 )
 
+@Immutable
 data class PlaybackResolutionResult(
     val sourceId: String,
     val sourceItemId: String,
@@ -139,6 +145,7 @@ data class PlaybackResolutionResult(
     val requestPolicySourceId: String
 )
 
+@Immutable
 data class UserProfile(
     val id: String,
     val name: String,
@@ -152,6 +159,7 @@ data class UserProfile(
     val historyEnabled: Boolean = true
 )
 
+@Immutable
 data class PreferenceConfig(
     val profileId: String = "default",
     val tagPreferences: Map<String, TagPreferenceState> = emptyMap(),
@@ -168,6 +176,7 @@ data class PreferenceConfig(
     val hiddenItemIds: Set<String> = emptySet()
 )
 
+@Immutable
 data class LabelComboSuggestion(
     val labels: List<String>,
     val displayTitle: String,
@@ -175,6 +184,7 @@ data class LabelComboSuggestion(
     val score: Double
 )
 
+@Immutable
 data class UserTasteProfile(
     val profileId: String = "default",
     val labelScores: Map<String, Double> = emptyMap(),
@@ -184,6 +194,7 @@ data class UserTasteProfile(
     val totalInteractions: Int = 0
 )
 
+@Immutable
 data class SourceRuntimeHealth(
     val sourceId: String,
     val lastLatencyMs: Long? = null,
@@ -222,6 +233,7 @@ data class FixtureRunResult(
     val message: String
 )
 
+@Immutable
 data class MagicPhWebsiteProfile(
     val id: String,
     val name: String,

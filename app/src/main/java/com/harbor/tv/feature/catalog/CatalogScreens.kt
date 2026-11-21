@@ -28,11 +28,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,6 +85,7 @@ fun HomeScreen(
     quickCategories: List<CategoryItem>,
     rowsBySource: Map<String, List<CatalogItem>>,
     featuredHomeItem: CatalogItem? = null,
+    featuredItemFlow: StateFlow<CatalogItem?>? = null,
     only4kFilter: Boolean = false,
     previewEnabled: Boolean = true,
     watchHistory: List<CatalogRepository.WatchHistoryRecord>,
@@ -114,10 +117,15 @@ fun HomeScreen(
     val activeSiteFilterId = selectedSiteFilterId?.takeIf { it in enabledSourceIds }
     val isFilteredMode = only4kFilter || activeSiteFilterId != null
 
-    LaunchedEffect(lastFocusedKey, rowsBySource, isFilteredMode) {
-        val target = lastFocusedKey ?: return@LaunchedEffect
-        restoreRequesters[target]?.let { req ->
-            runCatching { req.requestFocus() }
+    val initialFocusKey = remember { lastFocusedKey }
+    var focusRestored by remember { mutableStateOf(false) }
+    LaunchedEffect(rowsBySource.isNotEmpty(), isFilteredMode) {
+        if (!focusRestored && initialFocusKey != null) {
+            val req = restoreRequesters[initialFocusKey]
+            if (req != null) {
+                focusRestored = true
+                runCatching { req.requestFocus() }
+            }
         }
     }
 
@@ -187,14 +195,14 @@ fun HomeScreen(
                         onClick = onToggleOnly4kFilter
                     )
                 }
-                item(key = "home_filter_all_sites") {
+                item(key = "home_filter_all_sites", contentType = "chip") {
                     TvTagChip(
                         label = "All Sites",
                         selected = activeSiteFilterId == null,
                         onClick = { selectedSiteFilterId = null }
                     )
                 }
-                items(siteChips, key = { "home_filter_site_$it" }) { srcId ->
+                items(siteChips, key = { "home_filter_site_$it" }, contentType = { "chip" }) { srcId ->
                     TvTagChip(
                         label = friendlySourceName(srcId),
                         selected = activeSiteFilterId == srcId,
@@ -203,7 +211,7 @@ fun HomeScreen(
                         }
                     )
                 }
-                item(key = "home_filter_clear") {
+                item(key = "home_filter_clear", contentType = "chip") {
                     TvTagChip(
                         label = "Clear",
                         onClick = {
@@ -212,7 +220,7 @@ fun HomeScreen(
                         }
                     )
                 }
-                item(key = "home_filter_refresh") {
+                item(key = "home_filter_refresh", contentType = "chip") {
                     TvTagChip(
                         label = if (isLoading) "Refreshing..." else "Refresh",
                         onClick = onRefresh
@@ -240,7 +248,11 @@ fun HomeScreen(
                         .weight(1f)
                         .fillMaxSize()
                 ) {
-                    items(filteredGridItems, key = { "home_grid_${it.compositeId}" }) { item ->
+                    items(
+                        filteredGridItems,
+                        key = { "home_grid_${it.compositeId}" },
+                        contentType = { "video_card" }
+                    ) { item ->
                         val key = "home_grid:${item.compositeId}"
                         TvVideoCard(
                             item = item,
@@ -260,6 +272,29 @@ fun HomeScreen(
             }
         }
         return
+    }
+
+    val displayedRows = remember(rowsBySource, only4kFilter) {
+        if (only4kFilter) {
+            rowsBySource.mapValues { (_, list) -> list.filter(::is4kCatalogItem) }
+                .filterValues { it.isNotEmpty() }
+        } else {
+            rowsBySource
+        }
+    }
+    val freshRowItems = remember(personalizedFreshItems, only4kFilter) {
+        if (only4kFilter) personalizedFreshItems.filter(::is4kCatalogItem) else personalizedFreshItems
+    }
+    val uhdPicks = remember(rowsBySource) {
+        rowsBySource.values
+            .flatten()
+            .filter(::is4kCatalogItem)
+            .distinctBy { it.compositeId }
+            .take(12)
+    }
+    val fallbackSpotlight = remember(featuredHomeItem, displayedRows, only4kFilter) {
+        featuredHomeItem?.takeIf { !only4kFilter || is4kCatalogItem(it) }
+            ?: displayedRows.values.firstOrNull()?.firstOrNull()
     }
 
     LazyColumn(
@@ -401,40 +436,32 @@ fun HomeScreen(
             }
         }
 
-        val displayedRows = if (only4kFilter) {
-            rowsBySource.mapValues { (_, list) -> list.filter(::is4kCatalogItem) }
-                .filterValues { it.isNotEmpty() }
-        } else {
-            rowsBySource
-        }
-
-        val spotlightItem = featuredHomeItem?.takeIf { !only4kFilter || is4kCatalogItem(it) }
-            ?: displayedRows.values.firstOrNull()?.firstOrNull()
-
-        if (spotlightItem != null) {
-            item(key = "featured_spotlight") {
-                FeaturedCinemaSpotlight(
-                    item = spotlightItem,
+        if (featuredItemFlow != null || fallbackSpotlight != null) {
+            item(key = "featured_spotlight", contentType = "spotlight") {
+                HomeSpotlightSection(
+                    featuredItemFlow = featuredItemFlow,
+                    fallbackItem = fallbackSpotlight,
+                    only4kFilter = only4kFilter,
                     playFocusRequester = requesterFor("home_spotlight"),
                     onFocused = { onFocusKeyChanged("home_spotlight") },
-                    onPlayNow = { onPlayVideo(spotlightItem) },
-                    onOpenDetails = { onOpenVideo(spotlightItem) }
+                    onPlayVideo = onPlayVideo,
+                    onOpenVideo = onOpenVideo
                 )
             }
         }
 
         // Quick Sites row
         if (enabledSourceIds.isNotEmpty()) {
-            item(key = "quick_sites") {
+            item(key = "quick_sites", contentType = "chip_row") {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    item(key = "site_all") {
+                    item(key = "site_all", contentType = "chip") {
                         TvTagChip(
                             label = "All Sites",
                             selected = activeSiteFilterId == null,
                             onClick = { selectedSiteFilterId = null }
                         )
                     }
-                    items(siteChips, key = { "site_$it" }) { srcId ->
+                    items(siteChips, key = { "site_$it" }, contentType = { "chip" }) { srcId ->
                         TvTagChip(
                             label = friendlySourceName(srcId),
                             selected = activeSiteFilterId == srcId,
@@ -446,7 +473,7 @@ fun HomeScreen(
         }
 
         if (!isPrivateSession && topLabelCombos.isNotEmpty()) {
-            item(key = "for_you_combos") {
+            item(key = "for_you_combos", contentType = "chip_row") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = "For You • Top Label Combos",
@@ -455,7 +482,11 @@ fun HomeScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(topLabelCombos, key = { "combo_${it.searchQuery}" }) { combo ->
+                        items(
+                            topLabelCombos,
+                            key = { "combo_${it.searchQuery}" },
+                            contentType = { "chip" }
+                        ) { combo ->
                             TvTagChip(
                                 label = combo.displayTitle,
                                 onClick = { onApplyLabelCombo(combo) }
@@ -466,13 +497,8 @@ fun HomeScreen(
             }
         }
 
-        val freshRowItems = if (only4kFilter) {
-            personalizedFreshItems.filter(::is4kCatalogItem)
-        } else {
-            personalizedFreshItems
-        }
         if (freshRowItems.isNotEmpty()) {
-            item(key = "row_picked_for_you_fresh") {
+            item(key = "row_picked_for_you_fresh", contentType = "source_row") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         text = "Picked For You • Fresh",
@@ -481,7 +507,11 @@ fun HomeScreen(
                         fontWeight = FontWeight.Bold
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(freshRowItems, key = { "fresh_${it.compositeId}" }) { item ->
+                        items(
+                            freshRowItems,
+                            key = { "fresh_${it.compositeId}" },
+                            contentType = { "video_card" }
+                        ) { item ->
                             val key = "fresh:${item.compositeId}"
                             TvVideoCard(
                                 item = item,
@@ -501,13 +531,8 @@ fun HomeScreen(
         }
 
         // Aggregated 4K Ultra HD Picks row
-        val uhdPicks = rowsBySource.values
-            .flatten()
-            .filter(::is4kCatalogItem)
-            .distinctBy { it.compositeId }
-            .take(12)
         if (uhdPicks.isNotEmpty()) {
-            item(key = "row_4k_picks") {
+            item(key = "row_4k_picks", contentType = "source_row") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         text = "4K Ultra HD Picks",
@@ -516,7 +541,11 @@ fun HomeScreen(
                         fontWeight = FontWeight.Bold
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(uhdPicks, key = { "4k_${it.compositeId}" }) { item ->
+                        items(
+                            uhdPicks,
+                            key = { "4k_${it.compositeId}" },
+                            contentType = { "video_card" }
+                        ) { item ->
                             val key = "4k:${item.compositeId}"
                             TvVideoCard(
                                 item = item,
@@ -536,7 +565,7 @@ fun HomeScreen(
         }
 
         if (!isPrivateSession && watchHistory.isNotEmpty()) {
-            item {
+            item(key = "row_continue_watching", contentType = "source_row") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         text = "Continue Watching",
@@ -544,7 +573,11 @@ fun HomeScreen(
                         color = HarborColors.AccentTeal
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(watchHistory, key = { "hist:${it.item.compositeId}" }) { record ->
+                        items(
+                            watchHistory,
+                            key = { "hist:${it.item.compositeId}" },
+                            contentType = { "history_card" }
+                        ) { record ->
                             val key = "hist:${record.item.compositeId}"
                             val totalMs = (record.item.durationSeconds ?: 0) * 1000L
                             val progress = if (totalMs > 0L) {
@@ -578,7 +611,7 @@ fun HomeScreen(
         }
 
         displayedRows.forEach { (sourceId, items) ->
-            item(key = "row_$sourceId") {
+            item(key = "row_$sourceId", contentType = "source_row") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         text = friendlySourceName(sourceId),
@@ -586,7 +619,11 @@ fun HomeScreen(
                         color = HarborColors.TextPrimary
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(items, key = { it.compositeId }) { item ->
+                        items(
+                            items,
+                            key = { it.compositeId },
+                            contentType = { "video_card" }
+                        ) { item ->
                             val key = "home:${item.compositeId}"
                             TvVideoCard(
                                 item = item,
@@ -600,7 +637,7 @@ fun HomeScreen(
                                 onClick = { onOpenVideo(item) }
                             )
                         }
-                        item(key = "see_all_$sourceId") {
+                        item(key = "see_all_$sourceId", contentType = "see_all") {
                             TvFocusableCard(
                                 onClick = { onOpenSourceCategories(sourceId) },
                                 modifier = Modifier
@@ -639,7 +676,7 @@ fun HomeScreen(
         }
 
         if (quickCategories.isNotEmpty()) {
-            item {
+            item(key = "row_quick_categories", contentType = "chip_row") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         text = "Quick Categories",
@@ -647,7 +684,11 @@ fun HomeScreen(
                         color = HarborColors.TextPrimary
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(quickCategories, key = { "${it.sourceId}::${it.id}" }) { cat ->
+                        items(
+                            quickCategories,
+                            key = { "${it.sourceId}::${it.id}" },
+                            contentType = { "chip" }
+                        ) { cat ->
                             val key = "cat:${cat.sourceId}:${cat.id}"
                             TvTagChip(
                                 label = cat.title,
@@ -674,6 +715,30 @@ fun HomeScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun HomeSpotlightSection(
+    featuredItemFlow: StateFlow<CatalogItem?>?,
+    fallbackItem: CatalogItem?,
+    only4kFilter: Boolean,
+    playFocusRequester: FocusRequester,
+    onFocused: () -> Unit,
+    onPlayVideo: (CatalogItem) -> Unit,
+    onOpenVideo: (CatalogItem) -> Unit
+) {
+    val flowItem = featuredItemFlow?.collectAsState()?.value
+    val spotlightItem = (flowItem ?: fallbackItem)?.takeIf { !only4kFilter || is4kCatalogItem(it) }
+        ?: fallbackItem
+    if (spotlightItem != null) {
+        FeaturedCinemaSpotlight(
+            item = spotlightItem,
+            playFocusRequester = playFocusRequester,
+            onFocused = onFocused,
+            onPlayNow = { onPlayVideo(spotlightItem) },
+            onOpenDetails = { onOpenVideo(spotlightItem) }
+        )
     }
 }
 
@@ -874,7 +939,9 @@ fun CategoriesScreen(
     fun requesterFor(key: String): FocusRequester =
         restoreRequesters.getOrPut(key) { FocusRequester() }
     var filtersExpanded by remember { mutableStateOf(false) }
-    val displayedItems = if (only4kFilter) items.filter(::is4kCatalogItem) else items
+    val displayedItems = remember(items, only4kFilter) {
+        if (only4kFilter) items.filter(::is4kCatalogItem) else items
+    }
 
     LaunchedEffect(selectedSourceId, selectedCategory?.id, displayedItems.isNotEmpty()) {
         if (displayedItems.isNotEmpty()) {
@@ -882,10 +949,15 @@ fun CategoriesScreen(
         }
     }
 
-    LaunchedEffect(lastFocusedKey, items, filtersExpanded) {
-        val target = lastFocusedKey ?: return@LaunchedEffect
-        restoreRequesters[target]?.let { req ->
-            runCatching { req.requestFocus() }
+    val initialFocusKey = remember { lastFocusedKey }
+    var focusRestored by remember { mutableStateOf(false) }
+    LaunchedEffect(displayedItems.isNotEmpty(), filtersExpanded) {
+        if (!focusRestored && initialFocusKey != null) {
+            val req = restoreRequesters[initialFocusKey]
+            if (req != null) {
+                focusRestored = true
+                runCatching { req.requestFocus() }
+            }
         }
     }
 
@@ -1049,7 +1121,7 @@ fun CategoriesScreen(
                         onClick = { onSelectSortMode(CatalogSortMode.LONGEST_FIRST) }
                     )
                 }
-                items(enabledSourceIds) { sourceId ->
+                items(enabledSourceIds, key = { "cat_src_$it" }, contentType = { "chip" }) { sourceId ->
                     TvTagChip(
                         label = friendlySourceName(sourceId),
                         selected = sourceId == selectedSourceId,
@@ -1061,7 +1133,11 @@ fun CategoriesScreen(
             // Category cards row
             if (categories.isNotEmpty()) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(categories, key = { "${it.sourceId}::${it.id}" }) { cat ->
+                    items(
+                        categories,
+                        key = { "${it.sourceId}::${it.id}" },
+                        contentType = { "category_card" }
+                    ) { cat ->
                         val isSelected = selectedCategory?.id == cat.id && selectedCategory.sourceId == cat.sourceId
                         TvFocusableCard(
                             onClick = {
@@ -1113,7 +1189,7 @@ fun CategoriesScreen(
                 .weight(1f)
                 .fillMaxSize()
         ) {
-            items(displayedItems, key = { it.compositeId }) { item ->
+            items(displayedItems, key = { it.compositeId }, contentType = { "video_card" }) { item ->
                 val key = "cat_item:${item.compositeId}"
                 TvVideoCard(
                     item = item,
@@ -1172,10 +1248,15 @@ fun FavoritesScreen(
     fun requesterFor(key: String): FocusRequester =
         restoreRequesters.getOrPut(key) { FocusRequester() }
 
-    LaunchedEffect(lastFocusedKey, favorites, watchLater, watchHistory, selectedTab) {
-        val target = lastFocusedKey ?: return@LaunchedEffect
-        restoreRequesters[target]?.let { req ->
-            runCatching { req.requestFocus() }
+    val initialFocusKey = remember { lastFocusedKey }
+    var focusRestored by remember { mutableStateOf(false) }
+    LaunchedEffect(favorites.isNotEmpty(), watchLater.isNotEmpty(), watchHistory.isNotEmpty(), selectedTab) {
+        if (!focusRestored && initialFocusKey != null) {
+            val req = restoreRequesters[initialFocusKey]
+            if (req != null) {
+                focusRestored = true
+                runCatching { req.requestFocus() }
+            }
         }
     }
 
@@ -1245,7 +1326,7 @@ fun FavoritesScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(favorites, key = { it.compositeId }) { item ->
+                        items(favorites, key = { it.compositeId }, contentType = { "video_card" }) { item ->
                             val key = "fav:${item.compositeId}"
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TvVideoCard(
@@ -1293,7 +1374,7 @@ fun FavoritesScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(watchLater, key = { "wl_${it.compositeId}" }) { item ->
+                        items(watchLater, key = { "wl_${it.compositeId}" }, contentType = { "video_card" }) { item ->
                             val key = "wl:${item.compositeId}"
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TvVideoCard(
@@ -1333,7 +1414,7 @@ fun FavoritesScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(watchHistory, key = { "hist_${it.item.compositeId}" }) { record ->
+                        items(watchHistory, key = { "hist_${it.item.compositeId}" }, contentType = { "history_card" }) { record ->
                             val item = record.item
                             val key = "hist:${item.compositeId}"
                             val durationMs = (item.durationSeconds ?: 0) * 1000L

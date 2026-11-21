@@ -1,8 +1,6 @@
 package com.harbor.tv.core.tvui
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -38,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -49,14 +48,13 @@ import kotlinx.coroutines.isActive
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -74,6 +72,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.size.Precision
 import com.harbor.tv.core.model.CatalogItem
 import com.harbor.tv.core.model.LiveStatus
 import com.harbor.tv.core.model.TagPreferenceState
@@ -153,41 +152,17 @@ fun TvFocusableCard(
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
-    val scale by animateFloatAsState(
-        targetValue = if (isFocused) focusedScale else 1f,
-        animationSpec = tween(durationMillis = 120),
-        label = "cardScale"
-    )
-    val borderWidth by animateDpAsState(
-        targetValue = if (isFocused) 3.dp else 1.dp,
-        animationSpec = tween(durationMillis = 120),
-        label = "cardBorderWidth"
-    )
-    val elevation by animateDpAsState(
-        targetValue = if (isFocused) 12.dp else 0.dp,
-        animationSpec = tween(durationMillis = 120),
-        label = "cardElevation"
-    )
-    val bgColor by animateColorAsState(
-        targetValue = if (isFocused) focusedContainerColor else containerColor,
-        animationSpec = tween(durationMillis = 120),
-        label = "cardBg"
-    )
-    val borderColor by animateColorAsState(
-        targetValue = if (isFocused) focusBorderColor else unfocusedBorderColor,
-        animationSpec = tween(durationMillis = 120),
-        label = "cardBorderColor"
-    )
+    val borderWidth = if (isFocused) 3.dp else 1.dp
+    val bgColor = if (isFocused) focusedContainerColor else containerColor
+    val borderColor = if (isFocused) focusBorderColor else unfocusedBorderColor
 
     Box(
         modifier = modifier
-            .scale(scale)
-            .shadow(
-                elevation = elevation,
-                shape = shape,
-                ambientColor = focusBorderColor,
-                spotColor = focusBorderColor
-            )
+            .graphicsLayer {
+                val s = if (isFocused) focusedScale else 1f
+                scaleX = s
+                scaleY = s
+            }
             .clip(shape)
             .background(bgColor)
             .border(BorderStroke(borderWidth, borderColor), shape)
@@ -243,22 +218,15 @@ fun TvActionButton(
         tone == TvButtonTone.ACCENT -> HarborColors.AccentTeal.copy(alpha = 0.65f)
         else -> HarborColors.BorderSubtle
     }
-    val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.04f else 1f,
-        animationSpec = tween(durationMillis = 120),
-        label = "btnScale"
-    )
 
     val shape = RoundedCornerShape(10.dp)
     Box(
         modifier = modifier
-            .scale(scale)
-            .shadow(
-                elevation = if (isFocused) 10.dp else 0.dp,
-                shape = shape,
-                ambientColor = HarborColors.FocusCyan,
-                spotColor = HarborColors.FocusCyan
-            )
+            .graphicsLayer {
+                val s = if (isFocused) 1.04f else 1f
+                scaleX = s
+                scaleY = s
+            }
             .clip(shape)
             .background(if (isFocused) focusedBg else baseBg)
             .border(if (isFocused) 3.dp else 1.dp, borderColor, shape)
@@ -335,7 +303,11 @@ fun TvTagChip(
 
     Box(
         modifier = modifier
-            .scale(if (isFocused) 1.05f else 1f)
+            .graphicsLayer {
+                val s = if (isFocused) 1.05f else 1f
+                scaleX = s
+                scaleY = s
+            }
             .clip(shape)
             .background(bgColor)
             .border(if (isFocused) 2.5.dp else 1.dp, borderColor, shape)
@@ -470,7 +442,6 @@ fun TvNavSidebar(
                             modifier = Modifier
                                 .width(4.dp)
                                 .height(22.dp)
-                                .shadow(6.dp, RoundedCornerShape(2.dp), ambientColor = HarborColors.FocusCyan, spotColor = HarborColors.FocusCyan)
                                 .clip(RoundedCornerShape(2.dp))
                                 .background(HarborColors.FocusCyan)
                         )
@@ -586,15 +557,34 @@ fun TvVideoCard(
     fillWidth: Boolean = false,
     compact: Boolean = false
 ) {
-    val thumbs = remember(item.thumbnailReferences) {
+    val thumbs = remember(item.compositeId) {
         item.thumbnailReferences.filter { it.isNotBlank() }
     }
     var activeThumbIndex by remember(item.compositeId) { mutableIntStateOf(0) }
-    val qualityBadge = resolveQualityBadge(
-        maxResolutionHeight = item.maxResolutionHeight,
-        maxQualityLabel = item.maxQualityLabel,
-        tags = item.canonicalTags
-    )
+    val qualityBadge = remember(item.compositeId) {
+        resolveQualityBadge(
+            maxResolutionHeight = item.maxResolutionHeight,
+            maxQualityLabel = item.maxQualityLabel,
+            tags = item.canonicalTags
+        )
+    }
+    val sourceLabel = remember(item.compositeId) { friendlySourceName(item.sourceId) }
+    val badgeText = remember(item.compositeId) {
+        when {
+            item.liveStatus == LiveStatus.LIVE -> "LIVE"
+            item.liveStatus == LiveStatus.UPCOMING -> "UPCOMING"
+            item.durationSeconds != null -> formatDuration(item.durationSeconds)
+            else -> null
+        }
+    }
+    val tagsPreview = remember(item.compositeId, compact) {
+        (item.canonicalTags.ifEmpty { item.sourceTags })
+            .map(::formatTagForDisplay)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(if (compact) 2 else 3)
+            .joinToString(" • ")
+    }
 
     TvFocusableCard(
         onClick = onClick,
@@ -606,15 +596,16 @@ fun TvVideoCard(
         focusedScale = 1.05f,
         contentPadding = 0.dp
     ) { isFocused ->
-        LaunchedEffect(isFocused, previewEnabled, thumbs) {
-            if (isFocused && previewEnabled && thumbs.size > 1) {
+        if (isFocused && previewEnabled && thumbs.size > 1) {
+            LaunchedEffect(item.compositeId) {
                 delay(700L)
                 while (isActive) {
                     activeThumbIndex = (activeThumbIndex + 1) % thumbs.size
                     delay(1200L)
                 }
-            } else {
-                activeThumbIndex = 0
+            }
+            DisposableEffect(item.compositeId) {
+                onDispose { activeThumbIndex = 0 }
             }
         }
         val effectiveIndex = if (isFocused && previewEnabled && thumbs.size > 1) {
@@ -633,10 +624,11 @@ fun TvVideoCard(
             ) {
                 if (thumbUrl != null) {
                     val context = LocalContext.current
-                    val imageRequest = remember(thumbUrl) {
+                    val imageRequest = remember(thumbUrl, compact) {
                         ImageRequest.Builder(context)
                             .data(thumbUrl)
-                            .size(480, 270)
+                            .size(if (compact) 320 else 440, if (compact) 180 else 248)
+                            .precision(Precision.INEXACT)
                             .allowRgb565(true)
                             .crossfade(false)
                             .build()
@@ -653,7 +645,7 @@ fun TvVideoCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = friendlySourceName(item.sourceId),
+                            text = sourceLabel,
                             style = MaterialTheme.typography.labelLarge,
                             color = HarborColors.TextMuted
                         )
@@ -684,7 +676,7 @@ fun TvVideoCard(
                             .padding(horizontal = 7.dp, vertical = 3.dp)
                     ) {
                         Text(
-                            text = friendlySourceName(item.sourceId),
+                            text = sourceLabel,
                             style = MaterialTheme.typography.labelMedium,
                             color = HarborColors.FocusCyan,
                             fontWeight = FontWeight.SemiBold
@@ -748,12 +740,6 @@ fun TvVideoCard(
                 }
 
                 // Duration or Live badge (bottom-right)
-                val badgeText = when {
-                    item.liveStatus == LiveStatus.LIVE -> "LIVE"
-                    item.liveStatus == LiveStatus.UPCOMING -> "UPCOMING"
-                    item.durationSeconds != null -> formatDuration(item.durationSeconds)
-                    else -> null
-                }
                 if (badgeText != null) {
                     Box(
                         modifier = Modifier
@@ -814,13 +800,7 @@ fun TvVideoCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                val tagsPreview = (item.canonicalTags.ifEmpty { item.sourceTags })
-                    .map(::formatTagForDisplay)
-                    .filter { it.isNotBlank() }
-                    .distinct()
-                    .take(if (compact) 2 else 3)
-                    .joinToString(" • ")
-                val secondaryText = tagsPreview.ifEmpty { friendlySourceName(item.sourceId) }
+                val secondaryText = tagsPreview.ifEmpty { sourceLabel }
                 Text(
                     text = secondaryText,
                     style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,

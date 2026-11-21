@@ -203,9 +203,7 @@ data class HarborUiState(
 
     val isLoading: Boolean = false,
     val statusMessage: String? = null,
-    val errorMessage: String? = null,
-
-    val lastFocusedKeyByScreen: Map<HarborScreen, String> = emptyMap()
+    val errorMessage: String? = null
 )
 
 class HarborViewModel(application: Application) : AndroidViewModel(application) {
@@ -234,6 +232,11 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
         )
     )
     val uiState: StateFlow<HarborUiState> = _uiState.asStateFlow()
+
+    private val _featuredHomeItem = MutableStateFlow<CatalogItem?>(null)
+    val featuredHomeItem: StateFlow<CatalogItem?> = _featuredHomeItem.asStateFlow()
+
+    private val lastFocusedKeys = mutableMapOf<HarborScreen, String>()
 
     private val controlledTransport = ControlledHttpTransport(
         policyEngine = policyEngine,
@@ -492,11 +495,10 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun recordFocusKey(screen: HarborScreen, key: String) {
-        _uiState.update { state ->
-            if (state.lastFocusedKeyByScreen[screen] == key) state
-            else state.copy(lastFocusedKeyByScreen = state.lastFocusedKeyByScreen + (screen to key))
-        }
+        lastFocusedKeys[screen] = key
     }
+
+    fun getLastFocusedKey(screen: HarborScreen): String? = lastFocusedKeys[screen]
 
     fun navigateTo(screen: HarborScreen, clearBackStack: Boolean = false) {
         if (clearBackStack) {
@@ -623,6 +625,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
 
             // Spec 25.3: Switching profiles clears old visible results immediately
             activePaginationSession = null
+            _featuredHomeItem.value = null
             _uiState.update {
                 it.copy(
                     activeProfile = profile.copy(isPrivateSession = privateSession),
@@ -986,14 +989,16 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 val filteredRows = current.homeRowsBySource
                     .mapValues { (_, list) -> list.filterNot { it.compositeId == item.compositeId } }
                     .filterValues { it.isNotEmpty() }
+                val nextFeatured = _featuredHomeItem.value?.takeUnless { it.compositeId == item.compositeId }
+                    ?: pickFeaturedItem(filteredRows)
+                _featuredHomeItem.value = nextFeatured
                 current.copy(
                     preferences = updatedPrefs,
                     tasteProfile = updatedTaste,
                     topLabelCombos = updatedCombos,
                     homeRowsBySource = filteredRows,
                     personalizedFreshItems = current.personalizedFreshItems.filterNot { it.compositeId == item.compositeId },
-                    featuredHomeItem = current.featuredHomeItem?.takeUnless { it.compositeId == item.compositeId }
-                        ?: pickFeaturedItem(filteredRows),
+                    featuredHomeItem = nextFeatured,
                     categoryItems = current.categoryItems.filterNot { it.compositeId == item.compositeId },
                     searchResults = current.searchResults.filterNot { it.compositeId == item.compositeId },
                     favorites = current.favorites.filterNot { it.compositeId == item.compositeId },
@@ -1387,7 +1392,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setFeaturedHomeItem(item: CatalogItem) {
-        _uiState.update { it.copy(featuredHomeItem = item) }
+        _featuredHomeItem.value = item
     }
 
     fun quickSearch4k() {
@@ -1512,6 +1517,7 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                 .filter { it.source.id !in state.preferences.excludedSources }
 
             if (enabledDefs.isEmpty()) {
+                _featuredHomeItem.value = null
                 _uiState.update {
                     it.copy(
                         homeRowsBySource = emptyMap(),
@@ -1573,9 +1579,10 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                     current.homeRowsBySource.filterKeys { it in enabledIds }
                 }
                 val initialRows = orderHomeRowsBySourceTaste(rawInitialRows, current.tasteProfile)
-                val initialFeatured = current.featuredHomeItem
+                val initialFeatured = _featuredHomeItem.value
                     ?.takeIf { it.sourceId in enabledIds }
                     ?: pickFeaturedItem(initialRows)
+                _featuredHomeItem.value = initialFeatured
                 val initialFresh = buildPersonalizedFreshPicks(
                     rowsBySource = initialRows,
                     taste = current.tasteProfile,
@@ -1625,12 +1632,14 @@ class HarborViewModel(application: Application) : AndroidViewModel(application) 
                                 val mergedCats = (current.homeQuickCategories + result.categories)
                                     .distinctBy { c -> "${c.sourceId}::${c.id}" }
                                     .take(16)
-                                val currentFeaturedIs4k = (current.featuredHomeItem?.maxResolutionHeight ?: 0) >= 2160
-                                val nextFeatured = if (current.featuredHomeItem == null || !currentFeaturedIs4k) {
-                                    pickFeaturedItem(orderedRows) ?: current.featuredHomeItem
+                                val existingFeatured = _featuredHomeItem.value
+                                val currentFeaturedIs4k = (existingFeatured?.maxResolutionHeight ?: 0) >= 2160
+                                val nextFeatured = if (existingFeatured == null || !currentFeaturedIs4k) {
+                                    pickFeaturedItem(orderedRows) ?: existingFeatured
                                 } else {
-                                    current.featuredHomeItem
+                                    existingFeatured
                                 }
+                                _featuredHomeItem.value = nextFeatured
                                 val freshPicks = buildPersonalizedFreshPicks(
                                     rowsBySource = orderedRows,
                                     taste = current.tasteProfile,

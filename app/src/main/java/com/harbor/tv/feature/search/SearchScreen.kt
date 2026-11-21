@@ -118,10 +118,15 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(lastFocusedKey, results, filtersExpanded) {
-        val target = lastFocusedKey ?: return@LaunchedEffect
-        restoreRequesters[target]?.let { req ->
-            runCatching { req.requestFocus() }
+    val initialFocusKey = remember { lastFocusedKey }
+    var focusRestored by remember { mutableStateOf(false) }
+    LaunchedEffect(displayedResults.isNotEmpty(), filtersExpanded) {
+        if (!focusRestored && initialFocusKey != null) {
+            val req = restoreRequesters[initialFocusKey]
+            if (req != null) {
+                focusRestored = true
+                runCatching { req.requestFocus() }
+            }
         }
     }
 
@@ -353,7 +358,11 @@ fun SearchScreen(
                             color = HarborColors.TextSecondary
                         )
                     }
-                    items(recentSearches, key = { "recent_$it" }) { term ->
+                    items(
+                        recentSearches,
+                        key = { "recent_$it" },
+                        contentType = { "chip" }
+                    ) { term ->
                         TvTagChip(
                             label = term,
                             selected = query.equals(term, ignoreCase = true),
@@ -363,7 +372,7 @@ fun SearchScreen(
                             }
                         )
                     }
-                    item(key = "recent_clear") {
+                    item(key = "recent_clear", contentType = "chip") {
                         TvTagChip(
                             label = "Clear",
                             onClick = onClearRecentSearches
@@ -375,7 +384,11 @@ fun SearchScreen(
             // Personalized label combinations
             if (topLabelCombos.isNotEmpty()) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(topLabelCombos, key = { "search_combo_${it.searchQuery}" }) { combo ->
+                    items(
+                        topLabelCombos,
+                        key = { "search_combo_${it.searchQuery}" },
+                        contentType = { "chip" }
+                    ) { combo ->
                         TvTagChip(
                             label = combo.displayTitle,
                             selected = query.equals(combo.searchQuery, ignoreCase = true),
@@ -387,7 +400,11 @@ fun SearchScreen(
 
             // Quick search suggestions
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(quickSuggestions) { suggestion ->
+                items(
+                    quickSuggestions,
+                    key = { "suggest_$it" },
+                    contentType = { "chip" }
+                ) { suggestion ->
                     TvTagChip(
                         label = suggestion,
                         selected = query.equals(suggestion, ignoreCase = true),
@@ -401,42 +418,46 @@ fun SearchScreen(
 
             // Friendly site filters + 4K toggle + Sort chips
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item {
+                item(key = "search_4k", contentType = "chip") {
                     TvTagChip(
                         label = if (only4kFilter) "4K Only: ON" else "4K Only",
                         selected = only4kFilter,
                         onClick = onToggleOnly4kFilter
                     )
                 }
-                item {
+                item(key = "search_sort_default", contentType = "chip") {
                     TvTagChip(
                         label = "Default Order",
                         selected = sortMode == CatalogSortMode.DEFAULT,
                         onClick = { onSelectSortMode(CatalogSortMode.DEFAULT) }
                     )
                 }
-                item {
+                item(key = "search_sort_4k", contentType = "chip") {
                     TvTagChip(
                         label = "4K First",
                         selected = sortMode == CatalogSortMode.QUALITY_FIRST,
                         onClick = { onSelectSortMode(CatalogSortMode.QUALITY_FIRST) }
                     )
                 }
-                item {
+                item(key = "search_sort_long", contentType = "chip") {
                     TvTagChip(
                         label = "Longest",
                         selected = sortMode == CatalogSortMode.LONGEST_FIRST,
                         onClick = { onSelectSortMode(CatalogSortMode.LONGEST_FIRST) }
                     )
                 }
-                item {
+                item(key = "search_site_all", contentType = "chip") {
                     TvTagChip(
                         label = "All Sites",
                         selected = selectedSourceFilterId == null,
                         onClick = { onSelectSourceFilter(null) }
                     )
                 }
-                items(enabledSourceIds) { sourceId ->
+                items(
+                    enabledSourceIds,
+                    key = { "search_site_$it" },
+                    contentType = { "chip" }
+                ) { sourceId ->
                     TvTagChip(
                         label = friendlySiteName(sourceId),
                         selected = selectedSourceFilterId == sourceId,
@@ -485,7 +506,7 @@ fun SearchScreen(
                 .weight(1f)
                 .fillMaxSize()
         ) {
-            items(displayedResults, key = { it.compositeId }) { item ->
+            items(displayedResults, key = { it.compositeId }, contentType = { "video_card" }) { item ->
                 val key = "search:${item.compositeId}"
                 TvVideoCard(
                     item = item,

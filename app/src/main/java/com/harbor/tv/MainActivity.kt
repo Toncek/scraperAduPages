@@ -13,13 +13,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import coil.Coil
 import coil.ImageLoader
+import coil.decode.ExifOrientationPolicy
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.harbor.tv.core.model.DefinitionLifecycleState
 import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -60,8 +63,15 @@ class MainActivity : ComponentActivity() {
     private fun configureCoilImageLoader() {
         val userAgent =
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        val dispatcher = Dispatcher().apply {
+            maxRequests = 24
+            maxRequestsPerHost = 6
+        }
         val client = OkHttpClient.Builder()
-            .connectionPool(ConnectionPool(6, 30, TimeUnit.SECONDS))
+            .dispatcher(dispatcher)
+            .connectionPool(ConnectionPool(8, 30, TimeUnit.SECONDS))
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .addInterceptor(object : Interceptor {
@@ -82,9 +92,12 @@ class MainActivity : ComponentActivity() {
         Coil.setImageLoader(
             ImageLoader.Builder(applicationContext)
                 .okHttpClient(client)
+                .respectCacheHeaders(false)
+                .bitmapFactoryMaxParallelism(2)
+                .bitmapFactoryExifOrientationPolicy(ExifOrientationPolicy.IGNORE)
                 .memoryCache {
                     MemoryCache.Builder(applicationContext)
-                        .maxSizePercent(0.08)
+                        .maxSizePercent(0.12)
                         .build()
                 }
                 .diskCache {
@@ -131,11 +144,11 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
         return
     }
 
-    val preloadStatus by viewModel.playerController.preloadStatus.collectAsState()
-
-    val enabledSourceIds = state.registeredSources
-        .filter { it.lifecycleState == DefinitionLifecycleState.ENABLED }
-        .map { it.record.sourceId }
+    val enabledSourceIds = remember(state.registeredSources) {
+        state.registeredSources
+            .filter { it.lifecycleState == DefinitionLifecycleState.ENABLED }
+            .map { it.record.sourceId }
+    }
 
     val showSidebar = state.currentScreen in setOf(
         HarborScreen.HOME,
@@ -235,6 +248,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         quickCategories = state.homeQuickCategories,
                         rowsBySource = state.homeRowsBySource,
                         featuredHomeItem = state.featuredHomeItem,
+                        featuredItemFlow = viewModel.featuredHomeItem,
                         only4kFilter = state.only4kFilter,
                         previewEnabled = state.focusPreviewEnabled,
                         watchHistory = state.watchHistory,
@@ -242,7 +256,9 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         personalizedFreshItems = state.personalizedFreshItems,
                         isLoading = state.isLoading,
                         errorMessage = state.errorMessage,
-                        lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.HOME],
+                        lastFocusedKey = remember(state.currentScreen) {
+                            viewModel.getLastFocusedKey(HarborScreen.HOME)
+                        },
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.HOME, key) },
                         onFeaturedItemFocused = { item -> viewModel.setFeaturedHomeItem(item) },
                         onToggleOnly4kFilter = { viewModel.toggleOnly4kFilter() },
@@ -274,7 +290,9 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         pagesLoaded = state.categoryPagesLoaded,
                         isLoading = state.isLoading,
                         errorMessage = state.errorMessage,
-                        lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.CATEGORIES],
+                        lastFocusedKey = remember(state.currentScreen) {
+                            viewModel.getLastFocusedKey(HarborScreen.CATEGORIES)
+                        },
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.CATEGORIES, key) },
                         onToggleOnly4kFilter = { viewModel.toggleOnly4kFilter() },
                         onSelectSortMode = { mode -> viewModel.setCategorySortMode(mode) },
@@ -299,7 +317,9 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         recentSearches = state.recentSearches,
                         sourceErrors = state.searchErrors,
                         isLoading = state.isLoading,
-                        lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.SEARCH],
+                        lastFocusedKey = remember(state.currentScreen) {
+                            viewModel.getLastFocusedKey(HarborScreen.SEARCH)
+                        },
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.SEARCH, key) },
                         onToggleOnly4kFilter = { viewModel.toggleOnly4kFilter() },
                         onSelectSortMode = { mode -> viewModel.setSearchSortMode(mode) },
@@ -313,6 +333,7 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                 }
 
                 HarborScreen.VIDEO_DETAILS -> {
+                    val preloadStatus by viewModel.playerController.preloadStatus.collectAsState()
                     VideoDetailsScreen(
                         item = state.selectedVideo,
                         isFavorite = state.selectedVideoIsFavorite,
@@ -371,7 +392,9 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         watchHistory = state.watchHistory,
                         isPrivateSession = state.isPrivateSession,
                         previewEnabled = state.focusPreviewEnabled,
-                        lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.FAVORITES],
+                        lastFocusedKey = remember(state.currentScreen) {
+                            viewModel.getLastFocusedKey(HarborScreen.FAVORITES)
+                        },
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.FAVORITES, key) },
                         onOpenVideo = { item -> viewModel.openVideoDetails(item) },
                         onRemoveFavorite = { item -> viewModel.toggleFavorite(item) },
@@ -390,7 +413,9 @@ private fun HarborTvApp(viewModel: HarborViewModel) {
                         sourceHealthMap = state.sourceHealthMap,
                         statusMessage = state.statusMessage,
                         errorMessage = state.errorMessage,
-                        lastFocusedKey = state.lastFocusedKeyByScreen[HarborScreen.SOURCES],
+                        lastFocusedKey = remember(state.currentScreen) {
+                            viewModel.getLastFocusedKey(HarborScreen.SOURCES)
+                        },
                         onFocusKeyChanged = { key -> viewModel.recordFocusKey(HarborScreen.SOURCES, key) },
                         onOpenImport = {
                             viewModel.dismissApprovalReview()

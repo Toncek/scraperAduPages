@@ -90,9 +90,16 @@ fun SourcesScreen(
     fun requesterFor(key: String): FocusRequester =
         restoreRequesters.getOrPut(key) { FocusRequester() }
 
-    LaunchedEffect(lastFocusedKey) {
-        val target = lastFocusedKey ?: return@LaunchedEffect
-        restoreRequesters[target]?.let { req -> runCatching { req.requestFocus() } }
+    val initialFocusKey = remember { lastFocusedKey }
+    var focusRestored by remember { mutableStateOf(false) }
+    LaunchedEffect(registeredSources.isNotEmpty()) {
+        if (!focusRestored && initialFocusKey != null) {
+            val req = restoreRequesters[initialFocusKey]
+            if (req != null) {
+                focusRestored = true
+                runCatching { req.requestFocus() }
+            }
+        }
     }
 
     LazyColumn(
@@ -196,7 +203,11 @@ fun SourcesScreen(
                 )
             }
         } else {
-            items(registeredSources, key = { it.record.sourceId }) { src ->
+            items(
+                registeredSources,
+                key = { it.record.sourceId },
+                contentType = { "registered_source" }
+            ) { src ->
                 val state = src.lifecycleState
                 val stateColor = when (state) {
                     DefinitionLifecycleState.ENABLED -> HarborColors.SuccessGreen
@@ -352,7 +363,11 @@ fun SourcesScreen(
         }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(bundledDefinitions, key = { it.assetPath }) { bundled ->
+                items(
+                    bundledDefinitions,
+                    key = { it.assetPath },
+                    contentType = { "bundled_definition" }
+                ) { bundled ->
                     TvFocusableCard(
                         onClick = { onLoadBundledDefinition(bundled.assetPath) },
                         modifier = Modifier.width(260.dp)
@@ -405,7 +420,11 @@ fun SourcesScreen(
             }
         }
 
-        items(magicPhProfiles, key = { "mph_${it.id}" }) { profile ->
+        items(
+            magicPhProfiles,
+            key = { "mph_${it.id}" },
+            contentType = { "magic_ph_profile" }
+        ) { profile ->
             val key = "mph:${profile.id}"
             val friendlyName = friendlySourceName(profile.id)
             Column(
@@ -1045,7 +1064,11 @@ fun DiagnosticsScreen(
                 )
             }
 
-            items(report.fixtureResults, key = { it.fixtureId }) { res ->
+            items(
+                report.fixtureResults,
+                key = { it.fixtureId },
+                contentType = { "fixture_result" }
+            ) { res ->
                 val color = if (res.passed) HarborColors.SuccessGreen else HarborColors.DangerRed
                 val icon = if (res.passed) Icons.Rounded.CheckCircle else Icons.Rounded.Warning
                 Column(
