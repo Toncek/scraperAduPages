@@ -1,5 +1,6 @@
 package com.harbor.tv.feature.catalog
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -938,21 +939,30 @@ fun CategoriesScreen(
     val restoreRequesters = remember { mutableMapOf<String, FocusRequester>() }
     fun requesterFor(key: String): FocusRequester =
         restoreRequesters.getOrPut(key) { FocusRequester() }
-    var filtersExpanded by remember { mutableStateOf(false) }
+    val filterToggleFocus = remember { FocusRequester() }
+    val firstSiteFocus = remember { FocusRequester() }
     val displayedItems = remember(items, only4kFilter) {
         if (only4kFilter) items.filter(::is4kCatalogItem) else items
     }
+    var filtersExpanded by remember {
+        mutableStateOf(selectedCategory == null || displayedItems.isEmpty())
+    }
 
-    LaunchedEffect(selectedSourceId, selectedCategory?.id, displayedItems.isNotEmpty()) {
-        if (displayedItems.isNotEmpty()) {
-            filtersExpanded = false
+    BackHandler(enabled = filtersExpanded && displayedItems.isNotEmpty()) {
+        filtersExpanded = false
+        runCatching { filterToggleFocus.requestFocus() }
+    }
+
+    LaunchedEffect(filtersExpanded) {
+        if (filtersExpanded && enabledSourceIds.isNotEmpty()) {
+            runCatching { firstSiteFocus.requestFocus() }
         }
     }
 
     val initialFocusKey = remember { lastFocusedKey }
     var focusRestored by remember { mutableStateOf(false) }
-    LaunchedEffect(displayedItems.isNotEmpty(), filtersExpanded) {
-        if (!focusRestored && initialFocusKey != null) {
+    LaunchedEffect(displayedItems.isNotEmpty()) {
+        if (!focusRestored && !filtersExpanded && initialFocusKey != null) {
             val req = restoreRequesters[initialFocusKey]
             if (req != null) {
                 focusRestored = true
@@ -988,7 +998,8 @@ fun CategoriesScreen(
         return
     }
 
-    val compactGridMode = !filtersExpanded && displayedItems.isNotEmpty()
+    val showFilterPanel = filtersExpanded || displayedItems.isEmpty()
+    val compactGridMode = !showFilterPanel
     val sortLabel = when (sortMode) {
         CatalogSortMode.DEFAULT -> "Default"
         CatalogSortMode.QUALITY_FIRST -> "4K First"
@@ -999,160 +1010,129 @@ fun CategoriesScreen(
         CatalogSortMode.QUALITY_FIRST -> CatalogSortMode.LONGEST_FIRST
         CatalogSortMode.LONGEST_FIRST -> CatalogSortMode.DEFAULT
     }
+    val activeSourceLabel = friendlySourceName(
+        selectedCategory?.sourceId ?: selectedSourceId ?: enabledSourceIds.first()
+    )
+    val activeCategoryLabel = selectedCategory?.title ?: "Select Category"
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(HarborColors.Background)
             .padding(
-                horizontal = if (compactGridMode) 24.dp else 28.dp,
-                vertical = if (compactGridMode) 14.dp else 22.dp
+                horizontal = 24.dp,
+                vertical = if (compactGridMode) 12.dp else 16.dp
             ),
-        verticalArrangement = Arrangement.spacedBy(if (compactGridMode) 10.dp else 14.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        if (compactGridMode) {
-            val activeSourceLabel = friendlySourceName(
-                selectedCategory?.sourceId ?: selectedSourceId ?: enabledSourceIds.first()
+        // Persistent top control bar — never unmounts on toggle so D-pad focus stays predictable
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TvActionButton(
+                label = if (showFilterPanel) "Hide Filters ▴" else "Filters ▾",
+                tone = if (showFilterPanel) TvButtonTone.SECONDARY else TvButtonTone.PRIMARY,
+                focusRequester = filterToggleFocus,
+                onClick = {
+                    if (displayedItems.isNotEmpty()) {
+                        filtersExpanded = !filtersExpanded
+                    } else {
+                        filtersExpanded = true
+                    }
+                }
             )
-            val activeCategoryLabel = selectedCategory?.title ?: "Videos"
+            TvTagChip(
+                label = if (only4kFilter) "4K Only: ON" else "4K Only",
+                selected = only4kFilter,
+                onClick = onToggleOnly4kFilter
+            )
+            TvTagChip(
+                label = "Sort: $sortLabel",
+                selected = sortMode != CatalogSortMode.DEFAULT,
+                onClick = { onSelectSortMode(nextSortMode) }
+            )
+            if (nextCursor != null) {
+                TvTagChip(
+                    label = if (isLoading) "Loading..." else "Next Page",
+                    onClick = { if (!isLoading) onLoadNextPage() }
+                )
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = "$activeSourceLabel • $activeCategoryLabel (${displayedItems.size})",
+                style = MaterialTheme.typography.titleMedium,
+                color = HarborColors.FocusCyan,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        if (showFilterPanel) {
+            // Sites selector row
             LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                item(key = "cat_slim_title") {
+                item(key = "cat_sites_label") {
                     Text(
-                        text = "$activeSourceLabel • $activeCategoryLabel (${displayedItems.size})",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = HarborColors.FocusCyan,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(end = 4.dp)
+                        text = "Site:",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = HarborColors.TextSecondary,
+                        modifier = Modifier.padding(end = 2.dp)
                     )
                 }
-                item(key = "cat_slim_filters") {
-                    TvTagChip(
-                        label = "Filters ▾",
-                        onClick = { filtersExpanded = true }
-                    )
-                }
-                item(key = "cat_slim_4k") {
-                    TvTagChip(
-                        label = if (only4kFilter) "4K Only: ON" else "4K Only",
-                        selected = only4kFilter,
-                        onClick = onToggleOnly4kFilter
-                    )
-                }
-                item(key = "cat_slim_sort") {
-                    TvTagChip(
-                        label = "Sort: $sortLabel",
-                        selected = sortMode != CatalogSortMode.DEFAULT,
-                        onClick = { onSelectSortMode(nextSortMode) }
-                    )
-                }
-                if (nextCursor != null) {
-                    item(key = "cat_slim_next") {
-                        TvTagChip(
-                            label = if (isLoading) "Loading..." else "Next Page",
-                            onClick = { if (!isLoading) onLoadNextPage() }
-                        )
-                    }
-                }
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Browse Categories",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = HarborColors.TextPrimary
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (selectedCategory != null) {
-                        Text(
-                            text = "${friendlySourceName(selectedCategory.sourceId)} • ${selectedCategory.title}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = HarborColors.TextSecondary
-                        )
-                    }
-                    if (displayedItems.isNotEmpty()) {
-                        TvTagChip(
-                            label = "Hide Filters ▴",
-                            onClick = { filtersExpanded = false }
-                        )
-                    }
-                }
-            }
-
-            // Source selector row + 4K toggle + Sort chips
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                item {
-                    TvTagChip(
-                        label = if (only4kFilter) "4K Only: ON" else "4K Only",
-                        selected = only4kFilter,
-                        onClick = onToggleOnly4kFilter
-                    )
-                }
-                item {
-                    TvTagChip(
-                        label = "Sort: Default",
-                        selected = sortMode == CatalogSortMode.DEFAULT,
-                        onClick = { onSelectSortMode(CatalogSortMode.DEFAULT) }
-                    )
-                }
-                item {
-                    TvTagChip(
-                        label = "Sort: 4K First",
-                        selected = sortMode == CatalogSortMode.QUALITY_FIRST,
-                        onClick = { onSelectSortMode(CatalogSortMode.QUALITY_FIRST) }
-                    )
-                }
-                item {
-                    TvTagChip(
-                        label = "Sort: Longest",
-                        selected = sortMode == CatalogSortMode.LONGEST_FIRST,
-                        onClick = { onSelectSortMode(CatalogSortMode.LONGEST_FIRST) }
-                    )
-                }
-                items(enabledSourceIds, key = { "cat_src_$it" }, contentType = { "chip" }) { sourceId ->
+                items(
+                    enabledSourceIds,
+                    key = { "cat_src_$it" },
+                    contentType = { "chip" }
+                ) { sourceId ->
+                    val isFirst = sourceId == enabledSourceIds.firstOrNull()
                     TvTagChip(
                         label = friendlySourceName(sourceId),
                         selected = sourceId == selectedSourceId,
-                        onClick = { onSelectSource(sourceId) }
+                        focusRequester = if (isFirst) firstSiteFocus else null,
+                        onClick = {
+                            filtersExpanded = true
+                            onSelectSource(sourceId)
+                        }
                     )
                 }
             }
 
             // Category cards row
             if (categories.isNotEmpty()) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    item(key = "cat_list_label") {
+                        Text(
+                            text = "Category:",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = HarborColors.TextSecondary,
+                            modifier = Modifier.padding(end = 2.dp)
+                        )
+                    }
                     items(
                         categories,
                         key = { "${it.sourceId}::${it.id}" },
                         contentType = { "category_card" }
                     ) { cat ->
                         val isSelected = selectedCategory?.id == cat.id && selectedCategory.sourceId == cat.sourceId
-                        TvFocusableCard(
+                        TvTagChip(
+                            label = cat.title,
+                            selected = isSelected,
                             onClick = {
                                 filtersExpanded = false
                                 onSelectCategory(cat)
-                            },
-                            unfocusedBorderColor = if (isSelected) HarborColors.FocusCyan else HarborColors.BorderSubtle,
-                            contentPadding = 12.dp
-                        ) {
-                            Text(
-                                text = cat.title,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = if (isSelected) HarborColors.FocusCyan else HarborColors.TextPrimary
-                            )
-                        }
+                                runCatching { filterToggleFocus.requestFocus() }
+                            }
+                        )
                     }
                 }
             }

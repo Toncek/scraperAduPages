@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.speech.RecognizerIntent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -40,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.harbor.tv.core.model.CatalogItem
 import com.harbor.tv.core.model.CatalogSortMode
@@ -79,7 +82,8 @@ fun SearchScreen(
 ) {
     var showRemoteKeys by remember { mutableStateOf(false) }
     var voiceNotice by remember { mutableStateOf<String?>(null) }
-    var filtersExpanded by remember { mutableStateOf(false) }
+    val filterToggleFocus = remember { FocusRequester() }
+    val searchButtonFocus = remember { FocusRequester() }
     val restoreRequesters = remember { mutableMapOf<String, FocusRequester>() }
     fun requesterFor(key: String): FocusRequester =
         restoreRequesters.getOrPut(key) { FocusRequester() }
@@ -96,10 +100,11 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(results, query, selectedSourceFilterId, only4kFilter) {
-        if (displayedResults.isNotEmpty()) {
-            filtersExpanded = false
-        }
+    var filtersExpanded by remember { mutableStateOf(displayedResults.isEmpty()) }
+
+    BackHandler(enabled = filtersExpanded && displayedResults.isNotEmpty()) {
+        filtersExpanded = false
+        runCatching { filterToggleFocus.requestFocus() }
     }
 
     val voiceSearchLauncher = rememberLauncherForActivityResult(
@@ -112,6 +117,7 @@ fun SearchScreen(
                 ?.trim()
             if (!spoken.isNullOrBlank()) {
                 voiceNotice = null
+                filtersExpanded = false
                 onQueryChange(spoken)
                 onSearch(spoken)
             }
@@ -120,8 +126,8 @@ fun SearchScreen(
 
     val initialFocusKey = remember { lastFocusedKey }
     var focusRestored by remember { mutableStateOf(false) }
-    LaunchedEffect(displayedResults.isNotEmpty(), filtersExpanded) {
-        if (!focusRestored && initialFocusKey != null) {
+    LaunchedEffect(displayedResults.isNotEmpty()) {
+        if (!focusRestored && !filtersExpanded && initialFocusKey != null) {
             val req = restoreRequesters[initialFocusKey]
             if (req != null) {
                 focusRestored = true
@@ -134,7 +140,8 @@ fun SearchScreen(
         listOf("4K", "2160p", "1080p", "60fps", "HD")
     }
 
-    val compactGridMode = !filtersExpanded && displayedResults.isNotEmpty()
+    val showFilterPanel = filtersExpanded || displayedResults.isEmpty()
+    val compactGridMode = !showFilterPanel
     val sortLabel = when (sortMode) {
         CatalogSortMode.DEFAULT -> "Default"
         CatalogSortMode.QUALITY_FIRST -> "4K First"
@@ -145,105 +152,89 @@ fun SearchScreen(
         CatalogSortMode.QUALITY_FIRST -> CatalogSortMode.LONGEST_FIRST
         CatalogSortMode.LONGEST_FIRST -> CatalogSortMode.DEFAULT
     }
+    val activeSummary = buildString {
+        if (query.isNotBlank()) {
+            append("\"$query\"")
+        } else {
+            append("Search")
+        }
+        if (selectedSourceFilterId != null) {
+            append(" • ${friendlySiteName(selectedSourceFilterId)}")
+        }
+        if (only4kFilter) {
+            append(" • 4K")
+        }
+        if (displayedResults.isNotEmpty()) {
+            append(" (${displayedResults.size})")
+        }
+    }
+    val isFiltered = query.isNotBlank() || only4kFilter || selectedSourceFilterId != null
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(HarborColors.Background)
             .padding(
-                horizontal = if (compactGridMode) 24.dp else 28.dp,
-                vertical = if (compactGridMode) 14.dp else 22.dp
+                horizontal = 24.dp,
+                vertical = if (compactGridMode) 12.dp else 16.dp
             ),
-        verticalArrangement = Arrangement.spacedBy(if (compactGridMode) 10.dp else 14.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        if (compactGridMode) {
-            val activeSummary = buildString {
-                if (query.isNotBlank()) {
-                    append("\"$query\"")
-                } else {
-                    append("Results")
-                }
-                if (selectedSourceFilterId != null) {
-                    append(" • ${friendlySiteName(selectedSourceFilterId)}")
-                }
-                if (only4kFilter) {
-                    append(" • 4K")
-                }
-                append(" (${displayedResults.size})")
-            }
-            val isFiltered = query.isNotBlank() || only4kFilter || selectedSourceFilterId != null
-
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                item(key = "search_slim_summary") {
-                    Text(
-                        text = activeSummary,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = HarborColors.FocusCyan,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(end = 4.dp)
-                    )
-                }
-                item(key = "search_slim_expand") {
-                    TvTagChip(
-                        label = "Search & Filters ▾",
-                        onClick = { filtersExpanded = true }
-                    )
-                }
-                item(key = "search_slim_4k") {
-                    TvTagChip(
-                        label = if (only4kFilter) "4K Only: ON" else "4K Only",
-                        selected = only4kFilter,
-                        onClick = onToggleOnly4kFilter
-                    )
-                }
-                item(key = "search_slim_sort") {
-                    TvTagChip(
-                        label = "Sort: $sortLabel",
-                        selected = sortMode != CatalogSortMode.DEFAULT,
-                        onClick = { onSelectSortMode(nextSortMode) }
-                    )
-                }
-                if (isFiltered) {
-                    item(key = "search_slim_clear") {
-                        TvTagChip(
-                            label = "Clear",
-                            onClick = {
-                                voiceNotice = null
-                                onSelectSourceFilter(null)
-                                if (only4kFilter) onToggleOnly4kFilter()
-                                onQueryChange("")
-                                onSearch("")
-                                filtersExpanded = true
-                            }
-                        )
+        // Persistent top control bar — never unmounts on toggle so D-pad focus stays predictable
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TvActionButton(
+                label = if (showFilterPanel) "Hide Search ▴" else "Search & Filters ▾",
+                tone = if (showFilterPanel) TvButtonTone.SECONDARY else TvButtonTone.PRIMARY,
+                focusRequester = filterToggleFocus,
+                onClick = {
+                    if (displayedResults.isNotEmpty()) {
+                        filtersExpanded = !filtersExpanded
+                    } else {
+                        filtersExpanded = true
                     }
                 }
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Search",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = HarborColors.TextPrimary
+            )
+            TvTagChip(
+                label = if (only4kFilter) "4K Only: ON" else "4K Only",
+                selected = only4kFilter,
+                onClick = onToggleOnly4kFilter
+            )
+            TvTagChip(
+                label = "Sort: $sortLabel",
+                selected = sortMode != CatalogSortMode.DEFAULT,
+                onClick = { onSelectSortMode(nextSortMode) }
+            )
+            if (isFiltered) {
+                TvTagChip(
+                    label = "Clear",
+                    onClick = {
+                        voiceNotice = null
+                        onSelectSourceFilter(null)
+                        if (only4kFilter) onToggleOnly4kFilter()
+                        onQueryChange("")
+                        onSearch("")
+                        filtersExpanded = true
+                    }
                 )
-                if (displayedResults.isNotEmpty()) {
-                    TvTagChip(
-                        label = "Hide Filters ▴",
-                        onClick = { filtersExpanded = false }
-                    )
-                }
             }
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = activeSummary,
+                style = MaterialTheme.typography.titleMedium,
+                color = HarborColors.FocusCyan,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
 
+        if (showFilterPanel) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -257,8 +248,9 @@ fun SearchScreen(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(
                         onSearch = {
-                            if (results.isNotEmpty()) filtersExpanded = false
+                            filtersExpanded = false
                             onSearch(null)
+                            runCatching { filterToggleFocus.requestFocus() }
                         }
                     ),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -272,9 +264,11 @@ fun SearchScreen(
                 TvActionButton(
                     label = "Search",
                     tone = TvButtonTone.PRIMARY,
+                    focusRequester = searchButtonFocus,
                     onClick = {
-                        if (results.isNotEmpty()) filtersExpanded = false
+                        filtersExpanded = false
                         onSearch(null)
+                        runCatching { filterToggleFocus.requestFocus() }
                     }
                 )
                 TvActionButton(
@@ -336,7 +330,11 @@ fun SearchScreen(
                                 when (k) {
                                     "SPACE" -> onQueryChange("$query ")
                                     "DEL" -> if (query.isNotEmpty()) onQueryChange(query.dropLast(1))
-                                    "GO" -> onSearch(null)
+                                    "GO" -> {
+                                        filtersExpanded = false
+                                        onSearch(null)
+                                        runCatching { filterToggleFocus.requestFocus() }
+                                    }
                                     else -> onQueryChange(query + k.lowercase())
                                 }
                             }
@@ -367,8 +365,10 @@ fun SearchScreen(
                             label = term,
                             selected = query.equals(term, ignoreCase = true),
                             onClick = {
+                                filtersExpanded = false
                                 onQueryChange(term)
                                 onSearch(term)
+                                runCatching { filterToggleFocus.requestFocus() }
                             }
                         )
                     }
@@ -392,7 +392,11 @@ fun SearchScreen(
                         TvTagChip(
                             label = combo.displayTitle,
                             selected = query.equals(combo.searchQuery, ignoreCase = true),
-                            onClick = { onApplyLabelCombo(combo) }
+                            onClick = {
+                                filtersExpanded = false
+                                onApplyLabelCombo(combo)
+                                runCatching { filterToggleFocus.requestFocus() }
+                            }
                         )
                     }
                 }
@@ -409,41 +413,26 @@ fun SearchScreen(
                         label = suggestion,
                         selected = query.equals(suggestion, ignoreCase = true),
                         onClick = {
+                            filtersExpanded = false
                             onQueryChange(suggestion)
                             onSearch(suggestion)
+                            runCatching { filterToggleFocus.requestFocus() }
                         }
                     )
                 }
             }
 
-            // Friendly site filters + 4K toggle + Sort chips
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item(key = "search_4k", contentType = "chip") {
-                    TvTagChip(
-                        label = if (only4kFilter) "4K Only: ON" else "4K Only",
-                        selected = only4kFilter,
-                        onClick = onToggleOnly4kFilter
-                    )
-                }
-                item(key = "search_sort_default", contentType = "chip") {
-                    TvTagChip(
-                        label = "Default Order",
-                        selected = sortMode == CatalogSortMode.DEFAULT,
-                        onClick = { onSelectSortMode(CatalogSortMode.DEFAULT) }
-                    )
-                }
-                item(key = "search_sort_4k", contentType = "chip") {
-                    TvTagChip(
-                        label = "4K First",
-                        selected = sortMode == CatalogSortMode.QUALITY_FIRST,
-                        onClick = { onSelectSortMode(CatalogSortMode.QUALITY_FIRST) }
-                    )
-                }
-                item(key = "search_sort_long", contentType = "chip") {
-                    TvTagChip(
-                        label = "Longest",
-                        selected = sortMode == CatalogSortMode.LONGEST_FIRST,
-                        onClick = { onSelectSortMode(CatalogSortMode.LONGEST_FIRST) }
+            // Friendly site filter chips
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                item(key = "search_sites_label") {
+                    Text(
+                        text = "Site:",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = HarborColors.TextSecondary,
+                        modifier = Modifier.padding(end = 2.dp)
                     )
                 }
                 item(key = "search_site_all", contentType = "chip") {
